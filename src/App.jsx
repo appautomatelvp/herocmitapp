@@ -36,6 +36,7 @@ import {
   ensureAnonymousAuth,
   generateSmartGuestCode,
   ensureEmployeeQRToken,
+  limit,
   signInAnonymously,
   signOut,
   onAuthStateChanged,
