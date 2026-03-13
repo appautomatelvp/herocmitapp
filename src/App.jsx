@@ -1,0 +1,12226 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import './lib/designSystem.js';
+import { 
+  Users, ClipboardCheck, Lightbulb, ShieldAlert, History, 
+  CheckCircle2, XCircle, Clock, Search, LogOut, 
+  Activity, AlertTriangle, ChevronRight,
+  FileSpreadsheet, Save, Upload, RefreshCw, FileUp, Loader2, ChevronDown, RefreshCcw, Sparkles, UserCheck, Key, RotateCcw, Bell, Filter, X, ArrowRightCircle, Camera, Phone, Mail, MapPin, HeartPulse, Zap, LayoutDashboard, FileText, Send, Trash2, Edit, Archive, Bot,
+  Star, ThumbsUp,
+  Fuel, 
+  Gauge, 
+  AlertOctagon, 
+  CheckSquare,
+  ChevronUp,
+  ImagePlus,
+  Database,
+  CalendarDays,
+  MessageSquare,
+  Megaphone,
+  Trophy,
+  Medal,
+  TrendingUp,
+  Menu as MenuIcon,
+  DownloadCloud,
+  UploadCloud,
+  Milestone, GitCommit, ArrowRightLeft,
+  Award, // ADDED: Icon cho chức năng Ngôi sao an toàn
+  HelpCircle, BookOpen, ChevronLeft, List,
+  QrCode, ScanLine, UserPlus, Building2, HardHat, BadgeCheck, ExternalLink, ClipboardList,
+  Eye, KeyRound, CreditCard, Info
+} from 'lucide-react';
+
+import {
+  getCollection,
+  getDocRef,
+  auth,
+  ensureAnonymousAuth,
+  generateSmartGuestCode,
+  ensureEmployeeQRToken,
+  signInAnonymously,
+  signOut,
+  onAuthStateChanged,
+  addDoc,
+  updateDoc,
+  onSnapshot,
+  deleteDoc,
+  query,
+  where,
+  getDocs,
+  writeBatch,
+  arrayUnion,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updatePassword,
+} from './config/firebase.js';
+
+import {
+  GROUP_ORDER,
+  POSITION_GROUPS,
+  GROUP_COLORS,
+  OIL_EQUIPMENT_TYPES,
+  EQUIPMENT_TYPES,
+  VALID_EQUIPMENT_LIST,
+  CHECKLIST_SCHEMA,
+  MOCK_HISTORY,
+  MOCK_METERS,
+} from './config/constants.js';
+
+import {
+  removeAccents,
+  getLastNameUsername,
+  normalizePhone,
+  determineGroup,
+  getBlockPriority,
+  getThemeColors,
+  getAccessLevel,
+  canRecord,
+  getCoreRoleIndex,
+  sortEmployees,
+  getInitials,
+  getCurrentDate,
+  getCurrentTime,
+  getLocalYYYYMM,
+  getLocalYear,
+  getLocalQuarter,
+  resizeImage,
+  checkDateMatch,
+  normalizeStringForMatch,
+  checkFuzzyMatch,
+  excelDateToJSDate,
+  getChecklistItemLabel,
+  getDisplayGroup,
+} from './lib/utils.js';
+
+import DocumentationCenter from './components/DocumentationCenter.jsx';
+import { createAuditLog } from './lib/audit.js';
+import { Card, Modal, GroupBadge, Avatar } from './components/ui.jsx';
+import { QRCodeDisplay } from './components/QRCodeDisplay.jsx';
+import GuestPortal from './pages/guest/GuestPortal.jsx';
+import GuestDashboard from './pages/guest/GuestDashboard.jsx';
+import QRScannerModal from './components/qr/QRScannerModal.jsx';
+import QRLoginFlow from './components/qr/QRLoginFlow.jsx';
+import GuestQRLoginFlow from './components/qr/GuestQRLoginFlow.jsx';
+
+// ==========================================
+// 4. UI COMPONENTS (tiếp: downloadHeroCard, QRCodeDisplay, ...)
+// ==========================================
+
+// QRCodeDisplay đã chuyển sang components/QRCodeDisplay.jsx
+
+const ImagePreview = ({ src, alt, className }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  if (!src) return null;
+  return (
+    <>
+      <img 
+        src={src} 
+        alt={alt} 
+        className={`${className} cursor-pointer hover:opacity-80 transition`} 
+        onClick={() => setIsOpen(true)}
+        title="Nhấn để xem chi tiết"
+      />
+      {isOpen && (
+        <div 
+          className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setIsOpen(false)}
+        >
+          <button 
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 text-white bg-white/20 hover:bg-white/40 rounded-full p-2 transition shadow-lg"
+            onClick={(e) => { e.stopPropagation(); setIsOpen(false); }}
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={src} 
+            alt={alt} 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" 
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
+    </>
+  );
+};
+
+// Modal đã chuyển sang components/ui.jsx
+
+// ==========================================
+// DOCUMENTATION CENTER COMPONENT đã chuyển sang components/DocumentationCenter.jsx
+// ==========================================
+
+const RatingStars = ({ rating, setRating, readOnly = false, size = 20 }) => {
+    return (
+        <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                    key={star}
+                    onClick={() => !readOnly && setRating(star)}
+                    className={`${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110 transition-transform'}`}
+                    disabled={readOnly}
+                >
+                    <Star 
+                        size={size} 
+                        className={`${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} 
+                    />
+                </button>
+            ))}
+        </div>
+    );
+};
+
+const getRatingLabel = (rating) => {
+    switch (rating) {
+        case 1: return { text: "Vi phạm nghiêm trọng / Thái độ chống đối", color: "text-red-600 bg-red-50 border-red-200" };
+        case 2: return { text: "Cần nhắc nhở / Sơ suất", color: "text-orange-600 bg-orange-50 border-orange-200" };
+        case 3: return { text: "Đạt yêu cầu / Bình thường", color: "text-gray-600 bg-gray-50 border-gray-200" };
+        case 4: return { text: "Tốt / Đáng ghi nhận", color: "text-blue-600 bg-blue-50 border-blue-200" };
+        case 5: return { text: "Xuất sắc / Khen thưởng", color: "text-green-600 bg-green-50 border-green-200" };
+        default: return { text: "", color: "" };
+    }
+};
+
+// --- NEW COMPONENT: SMART CONTENT ---
+const SmartContent = ({ text, onEquipmentClick, isSafety, isCompact }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    if (!text) return null;
+
+    const MAX_CHARS = 120;
+    const shouldTruncate = text.length > MAX_CHARS;
+    const displayText = (!isExpanded && shouldTruncate) ? text.slice(0, MAX_CHARS) + '...' : text;
+
+    const parseText = (content) => {
+        // Regex nhận diện các mã thiết bị phổ biến tại cảng
+        const regex = /\b(RTG|QC|TT|UN|EH|LRS|RS)\d{2,3}\b/gi;
+        const parts = content.split(regex);
+        const matches = content.match(regex) || [];
+
+        if (matches.length === 0) return content;
+
+        return parts.reduce((arr, part, i) => {
+            arr.push(part);
+            if (i < matches.length) {
+                arr.push(
+                    <span
+                        key={i}
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            if (onEquipmentClick) onEquipmentClick(matches[i].toUpperCase()); 
+                        }}
+                        className={`font-black text-indigo-700 hover:text-indigo-900 hover:underline px-1 bg-indigo-50 rounded mx-0.5 ${onEquipmentClick ? 'cursor-pointer' : ''}`}
+                        title="Click để xem lịch sử thiết bị này"
+                    >
+                        {matches[i].toUpperCase()}
+                    </span>
+                );
+            }
+            return arr;
+        }, []);
+    };
+
+    const containerClass = isCompact 
+        ? `text-xs leading-relaxed whitespace-pre-wrap ${isSafety ? 'text-red-700 font-medium' : 'text-gray-700'}`
+        : `text-sm leading-relaxed whitespace-pre-wrap p-3 rounded-lg border ${isSafety ? 'bg-red-50 border-red-100 text-red-700 font-bold' : 'bg-gray-50 border-gray-200 text-gray-800 font-medium'}`;
+
+    return (
+        <div className={containerClass} onClick={(e) => e.stopPropagation()}>
+            {parseText(displayText)}
+            {shouldTruncate && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                    className="text-indigo-600 hover:text-indigo-800 font-bold ml-2 text-[11px] underline"
+                >
+                    {isExpanded ? 'Thu gọn' : 'Xem thêm'}
+                </button>
+            )}
+        </div>
+    );
+};
+
+// --- NEW COMPONENT: CHECKLIST LOG DETAILS VIEWER ---
+const ChecklistLogDetails = ({ log }) => {
+    const [expanded, setExpanded] = useState({});
+
+    if (!log.data) return <span className="text-gray-400 italic">Không có dữ liệu chi tiết</span>;
+    
+    const issues = Object.entries(log.data).filter(([key, item]) => item.status !== 'OK');
+    if (issues.length === 0) return <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={14}/> Hoạt động tốt</span>;
+
+    const toggleExpand = (key, e) => {
+        e.stopPropagation();
+        setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    return (
+        <div className="space-y-1.5 mt-2">
+            {issues.map(([key, item], idx) => (
+                <div key={idx} className={`text-xs p-2 rounded-lg border flex flex-col gap-1 shadow-sm transition-all ${item.status === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                    <div className="flex justify-between items-start">
+                        <div className="font-bold flex items-start gap-1.5 uppercase tracking-wide text-[10px] opacity-80 pt-0.5">
+                            {item.status === 'CRITICAL' ? <XCircle size={12} className="shrink-0"/> : <AlertTriangle size={12} className="shrink-0"/>}
+                            <span>{getChecklistItemLabel(log.type, key)}</span>
+                        </div>
+                        {item.note && (
+                            <button 
+                                onClick={(e) => toggleExpand(key, e)}
+                                className="text-[9px] underline hover:opacity-70 whitespace-nowrap ml-2 text-indigo-600 font-bold shrink-0"
+                            >
+                                {expanded[key] ? 'Thu gọn' : 'Chi tiết lỗi'}
+                            </button>
+                        )}
+                    </div>
+                    {expanded[key] && item.note && (
+                        <div className="font-medium text-sm ml-4 mt-1 animate-fadeIn border-t border-current/20 pt-1.5 flex flex-col gap-2">
+                            <span className="italic">"{item.note}"</span>
+                            {/* CẬP NHẬT: THÊM HIỂN THỊ HÌNH ẢNH TRONG CHI TIẾT LOG NẾU CÓ */}
+                            {item.image && (
+                                <ImagePreview src={item.image} alt="Bằng chứng" className="h-24 w-auto object-cover rounded-lg border border-current/20 shadow-sm" />
+                            )}
+                        </div>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// --- NEW COMPONENT: SECURITY MODAL ---
+const SecurityModal = ({ isOpen, onClose, onConfirm, title, warningMessage, currentUser }) => {
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleConfirm = () => {
+        if (!password) {
+            setError('Vui lòng nhập mật khẩu để xác nhận.');
+            return;
+        }
+        // Kiểm tra mật khẩu (So sánh với currentUser.password được lưu local hoặc context)
+        const isSuperAdmin = currentUser?.id === 'SUPER_ADMIN';
+        const passwordOk = isSuperAdmin 
+            ? (password === '15061990' || password === 'tsv')
+            : (currentUser && password === currentUser.password);
+        if (passwordOk) {
+            onConfirm();
+            onClose();
+            setPassword('');
+            setError('');
+        } else {
+            setError('Mật khẩu xác thực không đúng');
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-slideUp">
+                <div className="p-6 text-center">
+                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 animate-pulse">
+                        <ShieldAlert size={32} />
+                    </div>
+                    <h3 className="text-xl font-black text-gray-800 mb-2 uppercase">{title}</h3>
+                    <p className="text-sm text-gray-500 mb-6 font-medium leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        {warningMessage}
+                    </p>
+                    
+                    <div className="space-y-4 text-left">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Xác nhận mật khẩu</label>
+                            <input 
+                                type="password" 
+                                autoFocus
+                                className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition font-bold text-gray-800"
+                                placeholder="Nhập mật khẩu của bạn..."
+                                value={password}
+                                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                                onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+                            />
+                            {error && <p className="text-xs text-red-500 mt-2 font-bold flex items-center gap-1"><AlertTriangle size={12}/> {error}</p>}
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={onClose} 
+                                className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                onClick={handleConfirm} 
+                                className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg transition flex items-center justify-center gap-2"
+                            >
+                                <UserCheck size={18}/> Xác nhận
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// (Moved) QRScannerModal → src/components/qr/QRScannerModal.jsx
+// (Moved) QRLoginFlow → src/components/qr/QRLoginFlow.jsx
+// (Moved) GuestQRLoginFlow → src/components/qr/GuestQRLoginFlow.jsx
+
+const EmployeeQRSection = ({ currentUser, showToast }) => {
+  const [qrToken, setQrToken] = React.useState(currentUser?.qrToken || null);
+  const [generating, setGenerating] = React.useState(false);
+  const [showFullscreen, setShowFullscreen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (currentUser?.qrToken) setQrToken(currentUser.qrToken);
+    else if (currentUser && !currentUser.qrToken && currentUser.id !== 'SUPER_ADMIN') handleGenerateQR();
+  }, [currentUser?.qrToken]);
+
+  const handleGenerateQR = async () => {
+    if (!currentUser?.id || currentUser.id === 'SUPER_ADMIN') return;
+    setGenerating(true);
+    try {
+      const token = await ensureEmployeeQRToken(currentUser);
+      if (token) { setQrToken(token); showToast('✅ Đã tạo mã QR cá nhân!'); }
+    } catch (e) { showToast('Lỗi tạo mã QR!', 'error'); }
+    finally { setGenerating(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-[#1a3673] to-[#1e3a8a] px-4 py-3 text-white flex items-center gap-3">
+        <QrCode size={18}/>
+        <div>
+          <h3 className="font-black text-sm">Mã QR Cá nhân</h3>
+          <p className="text-blue-200 text-xs">Dùng để đăng nhập nhanh vào hệ thống HERO</p>
+        </div>
+      </div>
+      <div className="p-5">
+        {qrToken ? (
+          <div className="flex flex-col items-center gap-4">
+            <QRCodeDisplay value={qrToken} size={180}
+              employeeName={currentUser.name} employeeCode={currentUser.code}
+              cardSubtitle={currentUser.position || currentUser.group}
+              cardGroup={currentUser.group}
+              isGuestCard={false}
+              showDownloadBtn={true}
+            />
+            <div className="w-full bg-blue-50 rounded-xl p-3 border border-blue-100">
+              <p className="text-[10px] text-blue-500 font-bold uppercase text-center mb-1">Mã định danh QR</p>
+              <p className="text-[11px] font-mono font-bold text-blue-800 text-center break-all">{qrToken}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <button onClick={() => setShowFullscreen(true)} className="py-2.5 bg-[#1e3a8a] text-white rounded-xl text-xs font-bold hover:bg-[#172554] transition flex items-center justify-center gap-1.5 shadow">
+                <ExternalLink size={13}/> Xem to
+              </button>
+              <button onClick={async () => { try { await navigator.clipboard.writeText(qrToken); showToast('Đã copy mã!'); } catch(e){} }}
+                className="py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 transition flex items-center justify-center gap-1.5">
+                <Database size={13}/> Copy token
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 text-center">🔒 Mã QR này là duy nhất và không thể thay đổi</p>
+          </div>
+        ) : (
+          <div className="text-center py-6">
+            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3"><QrCode size={32} className="text-blue-400"/></div>
+            <p className="text-gray-600 text-sm font-medium mb-3">Bạn chưa có mã QR cá nhân</p>
+            <button onClick={handleGenerateQR} disabled={generating}
+              className="px-6 py-3 bg-[#1e3a8a] text-white rounded-xl font-bold hover:bg-[#172554] transition shadow flex items-center gap-2 mx-auto">
+              {generating ? <Loader2 className="animate-spin" size={16}/> : <QrCode size={16}/>}
+              {generating ? 'Đang tạo...' : 'Tạo mã QR ngay'}
+            </button>
+          </div>
+        )}
+      </div>
+      {showFullscreen && qrToken && (
+        <div className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-8 backdrop-blur-sm" onClick={() => setShowFullscreen(false)}>
+          <div className="bg-white rounded-3xl p-8 text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+            <QRCodeDisplay value={qrToken} size={280}
+              employeeName={currentUser.name} employeeCode={currentUser.code}
+              cardSubtitle={currentUser.position || currentUser.group}
+              cardGroup={currentUser.group}
+              isGuestCard={false}
+              showDownloadBtn={true}
+            />
+            <p className="text-xs text-gray-400 mt-4 max-w-xs mx-auto">Để người cần xem quét mã. Họ cần nhập mật khẩu của họ để đăng nhập.</p>
+            <button onClick={() => setShowFullscreen(false)} className="mt-4 px-6 py-2.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition">Đóng lại</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// GUEST PORTAL - Hợp nhất Đăng nhập & Đăng ký Khách/Nhà thầu
+// ============================================================
+// (Moved) GuestPortal → src/pages/guest/GuestPortal.jsx
+
+const GuestRegistrationForm = ({ isOpen, onClose, showToast }) => {
+  const [form, setForm] = React.useState({ name:'',type:'guest',company:'',phone:'',idCard:'',purpose:'',safetyAgreed:false });
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
+  const [guestCodeResult, setGuestCodeResult] = React.useState('');
+  const [autoDownloadData, setAutoDownloadData] = React.useState(null);
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) return showToast('Vui lòng nhập họ tên!', 'error');
+    if (!form.phone.trim()) return showToast('Vui lòng nhập số điện thoại!', 'error');
+    if (!form.idCard.trim()) return showToast('Vui lòng nhập số CCCD/Hộ chiếu!', 'error');
+    if (!form.purpose.trim()) return showToast('Vui lòng nhập mục đích vào cổng!', 'error');
+    if (!form.safetyAgreed) return showToast('Vui lòng đồng ý quy định an toàn!', 'error');
+    setSubmitting(true);
+    try {
+      await ensureAnonymousAuth();
+      const guestCode = generateSmartGuestCode(form.name, form.company);
+      const qrToken = `GUEST-QR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+      const tempPass = form.idCard.replace(/\s/g,'').slice(-6);
+      await addDoc(getCollection('guests'), {
+        name: form.name.trim(), type: form.type, company: form.company.trim(),
+        phone: form.phone.trim(), idCard: form.idCard.trim(), purpose: form.purpose.trim(),
+        safetyAgreed: true, guestCode, qrToken, tempPassword: tempPass,
+        status: 'pending', registeredAt: Date.now(),
+        registeredDate: new Date().toLocaleDateString('vi-VN'),
+        approvedBy: null, approvedAt: null
+      });
+      setGuestCodeResult(guestCode);
+      setSubmitted(true);
+      setAutoDownloadData({ name: form.name.trim(), company: form.company.trim(), type: form.type, guestCode, qrToken });
+    } catch (e) { console.error(e); showToast('Lỗi đăng ký. Vui lòng thử lại!', 'error'); }
+    finally { setSubmitting(false); }
+  };
+
+  const reset = () => { setSubmitted(false); setForm({name:'',type:'guest',company:'',phone:'',idCard:'',purpose:'',safetyAgreed:false}); onClose(); };
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-5 text-white flex justify-between items-start">
+          <div><h2 className="font-black text-xl">Đăng ký vào cổng</h2><p className="text-green-200 text-sm">Khách & Nhà thầu phụ</p></div>
+          <button onClick={reset} className="text-white/80 hover:text-white bg-white/20 rounded-full p-2 transition"><X size={18}/></button>
+        </div>
+        <div className="p-6 max-h-[80vh] overflow-y-auto">
+          {submitted ? (
+            <div className="text-center py-4">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle2 size={40} className="text-green-600"/></div>
+              <h3 className="text-xl font-black text-gray-800 mb-2">Đăng ký thành công!</h3>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left mb-4">
+                <p className="text-sm font-bold text-blue-800 mb-2">📌 Mã đăng ký của bạn:</p>
+                <p className="text-lg font-black font-mono text-blue-700 text-center py-2 bg-white rounded-lg border border-blue-200 select-all">{guestCodeResult}</p>
+                <p className="text-xs text-blue-600 mt-2 text-center">Lưu lại mã này để đăng nhập sau khi được duyệt</p>
+              </div>
+              {autoDownloadData && (
+                <div className="bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-200 rounded-xl p-4 mb-4 flex flex-col items-center gap-3">
+                  <p className="text-xs font-bold text-teal-700 uppercase flex items-center gap-1.5"><QrCode size={13}/> Thẻ QR của bạn</p>
+                  <QRCodeDisplay
+                    value={autoDownloadData.qrToken}
+                    size={140}
+                    employeeName={autoDownloadData.name}
+                    employeeCode={autoDownloadData.guestCode}
+                    cardSubtitle={autoDownloadData.type==='contractor'?'Nhà thầu phụ':'Khách thăm quan'}
+                    cardGroup={autoDownloadData.company||''}
+                    isGuestCard={true}
+                    showDownloadBtn={true}
+                  />
+                  <p className="text-[10px] text-teal-500 text-center">Nhấn nút để tải thẻ về máy.</p>
+                </div>
+              )}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-left mb-4">
+                <p className="text-xs font-bold text-yellow-800 uppercase mb-1">⏳ Đang chờ phê duyệt</p>
+                <p className="text-sm text-yellow-700">Thông tin đã được gửi đến Quản trị viên. Mật khẩu đăng nhập = 6 số cuối CCCD.</p>
+              </div>
+              <button onClick={reset} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">Đóng lại</button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Bạn là</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[{val:'guest',icon:'👤',label:'Khách thăm quan',desc:'Đối tác, khách hàng'},{val:'contractor',icon:'🏗️',label:'Nhà thầu phụ',desc:'Đội thi công, dịch vụ'}].map(opt => (
+                    <button key={opt.val} onClick={() => setForm({...form,type:opt.val})}
+                      className={`p-3 rounded-xl border-2 text-left transition ${form.type===opt.val?'border-green-500 bg-green-50':'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="text-2xl mb-1">{opt.icon}</div>
+                      <div className="font-bold text-sm text-gray-800">{opt.label}</div>
+                      <div className="text-xs text-gray-500">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Họ và tên <span className="text-red-500">*</span></label>
+                <input type="text" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-500" placeholder="Nguyễn Văn A..." value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{form.type==='contractor'?'Tên công ty / Đơn vị':'Công ty (nếu có)'}</label>
+                <input type="text" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-500" placeholder="Tên công ty..." value={form.company} onChange={e=>setForm({...form,company:e.target.value})}/>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Điện thoại <span className="text-red-500">*</span></label>
+                  <input type="tel" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-500" placeholder="0901..." value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CCCD / Hộ chiếu <span className="text-red-500">*</span></label>
+                  <input type="text" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-500" placeholder="012345..." value={form.idCard} onChange={e=>setForm({...form,idCard:e.target.value})}/>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mục đích vào cổng <span className="text-red-500">*</span></label>
+                <textarea className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-500 h-20 resize-none" placeholder="Mô tả công việc/mục đích..." value={form.purpose} onChange={e=>setForm({...form,purpose:e.target.value})}/>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-red-700 uppercase mb-2">⚠️ Quy định An toàn Cảng CMIT</p>
+                <ul className="text-xs text-red-600 space-y-1 mb-3">
+                  <li>• Bắt buộc đội mũ bảo hộ, mặc áo phản quang trong khu vực hoạt động</li>
+                  <li>• Không tự ý vào cầu tàu, bãi container khi chưa có người hướng dẫn</li>
+                  <li>• Tuân thủ hiệu lệnh của nhân viên an toàn CMIT</li>
+                  <li>• Nghiêm cấm dùng điện thoại khi di chuyển trong khu vực hoạt động</li>
+                </ul>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={form.safetyAgreed} onChange={e=>setForm({...form,safetyAgreed:e.target.checked})} className="mt-0.5 w-4 h-4 text-green-600 rounded"/>
+                  <span className="text-xs font-bold text-gray-700">Tôi đã đọc và đồng ý tuân thủ tất cả quy định an toàn của Cảng CMIT</span>
+                </label>
+              </div>
+              <button onClick={handleSubmit} disabled={submitting || !form.safetyAgreed}
+                className="w-full py-4 bg-green-600 text-white rounded-xl font-black text-base shadow-lg hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
+                {submitting ? <Loader2 className="animate-spin" size={18}/> : <UserPlus size={18}/>}
+                {submitting ? 'Đang gửi...' : 'Gửi đăng ký'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GuestLoginModal = ({ isOpen, onClose, showToast, onLoginSuccess }) => {
+  const [guestCode, setGuestCode] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  const handleLogin = async () => {
+    if (!guestCode.trim() || !password.trim()) return showToast('Vui lòng điền đầy đủ!', 'error');
+    setLoading(true);
+    try {
+      await ensureAnonymousAuth();
+      const q = query(getCollection('guests'), where('guestCode', '==', guestCode.trim().toUpperCase()));
+      const snap = await getDocs(q);
+      if (snap.empty) { showToast('Mã đăng ký không tồn tại!', 'error'); setLoading(false); return; }
+      const guestData = { ...snap.docs[0].data(), id: snap.docs[0].id };
+      if (guestData.status === 'pending') { showToast('Tài khoản đang chờ phê duyệt! Vui lòng liên hệ bảo vệ cổng.', 'warning'); setLoading(false); return; }
+      if (guestData.status === 'rejected') { showToast('Tài khoản đã bị từ chối!', 'error'); setLoading(false); return; }
+      if (guestData.status === 'banned') { showToast('Tài khoản đã bị khóa! Liên hệ bảo vệ cổng để được hỗ trợ.', 'error'); setLoading(false); return; }
+      // FIX: trim both sides, fallback chuẩn hơn
+      const storedPass = (guestData.tempPassword || '').trim();
+      const fallbackPass = (guestData.idCard || '').replace(/\s/g,'').slice(-6);
+      const expectedPass = storedPass || fallbackPass;
+      if (password.trim() !== expectedPass) { showToast('Mật khẩu không đúng! (6 số cuối CCCD)', 'error'); setLoading(false); return; }
+      onLoginSuccess(guestData); onClose();
+    } catch (e) { console.error(e); showToast('Lỗi đăng nhập! Vui lòng thử lại.', 'error'); }
+    finally { setLoading(false); }
+  };
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[150] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="bg-gradient-to-r from-teal-600 to-cyan-700 px-6 py-5 text-white flex justify-between items-start">
+          <div>
+            <h2 className="font-black text-lg flex items-center gap-2"><HardHat size={20}/>Đăng nhập Khách / NT</h2>
+            <p className="text-teal-200 text-sm mt-0.5">Sử dụng mã đăng ký GUEST-XXXXX</p>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white bg-white/20 rounded-full p-1.5 transition"><X size={16}/></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mã đăng ký</label>
+            <input type="text" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-teal-500 uppercase font-mono font-bold"
+              placeholder="GUEST-XXXXXXXX" value={guestCode} onChange={e=>setGuestCode(e.target.value.toUpperCase())}/>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mật khẩu</label>
+            <input type="password" className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
+              placeholder="6 số cuối CCCD/Hộ chiếu" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleLogin()}/>
+            <p className="text-xs text-gray-400 mt-1">Mật khẩu mặc định = 6 số cuối CCCD</p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">Hủy</button>
+            <button onClick={handleLogin} disabled={loading} className="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold shadow hover:bg-teal-700 transition flex items-center justify-center gap-2">
+              {loading && <Loader2 className="animate-spin" size={16}/>} Đăng nhập
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// (Moved) GuestVisitBooking → src/pages/guest/GuestVisitBooking.jsx
+// (Moved) GuestDashboard → src/pages/guest/GuestDashboard.jsx
+
+const GuestManagementPanel = ({ currentUser, showToast, initialGuestViewId }) => {
+  const [guests, setGuests] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState('pending');
+  const [selectedGuest, setSelectedGuest] = React.useState(null);
+  const [noteContent, setNoteContent] = React.useState('');
+  const [noteType, setNoteType] = React.useState('info');
+  const [addingNote, setAddingNote] = React.useState(false);
+  const [processingId, setProcessingId] = React.useState(null);
+  const [detailGuest, setDetailGuest] = React.useState(null);
+  const [confirmModal, setConfirmModal] = React.useState(null);
+  // Panel quét QR check-in/out
+  const [checkinPanel, setCheckinPanel] = React.useState(null);
+  const [guestBookings, setGuestBookings] = React.useState([]);
+  const [bookingFilter, setBookingFilter] = React.useState('pending');
+  const [processingBookingId, setProcessingBookingId] = React.useState(null);
+  const [panelTab, setPanelTab] = React.useState('guests'); // 'guests' | 'bookings' | 'checkin'
+  const [qrCheckinCode, setQrCheckinCode] = React.useState('');
+  const [processingCheckin, setProcessingCheckin] = React.useState(false);
+
+  React.useEffect(() => {
+    const q = query(getCollection('guests'), orderBy('registeredAt','desc'));
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs.map(d=>({...d.data(),id:d.id}));
+      setGuests(list);
+      setLoading(false);
+      // Auto-open detail từ QR scan
+      if (initialGuestViewId && !detailGuest) {
+        const found = list.find(g => g.id === initialGuestViewId);
+        if (found) { setDetailGuest(found); setFilter('all'); }
+      }
+    }, err => { console.warn(err); setLoading(false); });
+    return () => unsub();
+  }, [initialGuestViewId]);
+
+  // Load booking requests
+  React.useEffect(() => {
+    const q = query(getCollection('guest_visits'), where('type','==','booking'), orderBy('requestedAt','desc'));
+    const unsub = onSnapshot(q, snap => setGuestBookings(snap.docs.map(d=>({...d.data(),id:d.id}))), err => console.warn(err));
+    return () => unsub();
+  }, []);
+
+  // Approve/Reject booking
+  const handleApproveBooking = async (bookingId) => {
+    setProcessingBookingId(bookingId);
+    try {
+      await updateDoc(getDocRef('guest_visits', bookingId), { status:'approved', approvedBy:currentUser.name, approvedAt:Date.now() });
+      showToast('✅ Đã duyệt lịch vào cảng!');
+    } catch(e) { showToast('Lỗi!','error'); }
+    finally { setProcessingBookingId(null); }
+  };
+  const handleRejectBooking = async (bookingId) => {
+    setProcessingBookingId(bookingId);
+    try {
+      await updateDoc(getDocRef('guest_visits', bookingId), { status:'rejected', rejectedBy:currentUser.name, rejectedAt:Date.now() });
+      showToast('Đã từ chối lịch.');
+    } catch(e) { showToast('Lỗi!','error'); }
+    finally { setProcessingBookingId(null); }
+  };
+
+  // QR Check-in / Check-out
+  const handleQRCheckin = async (codeInput) => {
+    const code = (codeInput || qrCheckinCode).trim().toUpperCase();
+    if (!code) return showToast('Nhập mã QR hoặc mã đăng ký!','error');
+    setProcessingCheckin(true);
+    try {
+      await ensureAnonymousAuth();
+      // Tìm khách theo guestCode hoặc qrToken
+      const q1 = query(getCollection('guests'), where('guestCode','==', code));
+      let snap = await getDocs(q1);
+      if (snap.empty) {
+        const q2 = query(getCollection('guests'), where('qrToken','==', code));
+        snap = await getDocs(q2);
+      }
+      if (snap.empty) { showToast('Không tìm thấy khách với mã này!','error'); setProcessingCheckin(false); return; }
+      const guest = { ...snap.docs[0].data(), id: snap.docs[0].id };
+      if (guest.status !== 'approved') { showToast('Tài khoản chưa được phê duyệt!','error'); setProcessingCheckin(false); return; }
+
+      // Kiểm tra xem đang trong cảng chưa (có booking approved + checkin nhưng chưa checkout)
+      const qVisit = query(getCollection('guest_visits'),
+        where('guestId','==',guest.id),
+        where('checkinAt','!=',null));
+      const visitSnap = await getDocs(qVisit);
+      const activeVisit = visitSnap.docs.map(d=>({...d.data(),id:d.id})).find(v=>v.checkinAt && !v.checkoutAt);
+
+      if (activeVisit) {
+        // CHECK-OUT
+        const checkoutAt = Date.now();
+        const duration = Math.round((checkoutAt - activeVisit.checkinAt)/60000);
+        await updateDoc(getDocRef('guest_visits', activeVisit.id), {
+          checkoutAt, checkoutBy: currentUser.name,
+          duration,
+          status: 'done'
+        });
+        const dStr = duration >= 60 ? `${Math.floor(duration/60)}h${duration%60>0?` ${duration%60}p`:''}` : `${duration} phút`;
+        showToast(`🚪 Check-out: ${guest.name} — ${dStr} trong cảng`);
+      } else {
+        // CHECK-IN — tìm booking approved cho hôm nay
+        const todayStr = new Date().toISOString().split('T')[0];
+        const qBook = query(getCollection('guest_visits'),
+          where('guestId','==',guest.id), where('status','==','approved'), where('visitDate','==',todayStr));
+        const bookSnap = await getDocs(qBook);
+        let visitDocId;
+        if (!bookSnap.empty) {
+          visitDocId = bookSnap.docs[0].id;
+          await updateDoc(getDocRef('guest_visits', visitDocId), {
+            checkinAt: Date.now(), checkinBy: currentUser.name, checkoutAt: null
+          });
+        } else {
+          // Tạo visit mới (vào không cần booking trước)
+          const ref = await addDoc(getCollection('guest_visits'), {
+            guestId: guest.id, guestName: guest.name, guestCode: guest.guestCode,
+            guestType: guest.type, company: guest.company||'',
+            purpose: 'Vào cảng (check-in thủ công)', visitDate: todayStr,
+            timeStart: new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}),
+            status: 'approved', type: 'manual',
+            checkinAt: Date.now(), checkinBy: currentUser.name, checkoutAt: null,
+            requestedAt: Date.now(), requestedDate: new Date().toLocaleDateString('vi-VN')
+          });
+        }
+        showToast(`🏢 Check-in: ${guest.name} đã vào cảng!`);
+      }
+      setQrCheckinCode('');
+    } catch(e) { console.error(e); showToast('Lỗi check-in/out!','error'); }
+    finally { setProcessingCheckin(false); }
+  };
+
+  const handleApprove = async (guestId) => {
+    setProcessingId(guestId);
+    try {
+      await updateDoc(getDocRef('guests',guestId), { status:'approved', approvedBy:currentUser.name, approvedAt:Date.now(), approvedDate:new Date().toLocaleDateString('vi-VN') });
+      await createAuditLog('GUEST_APPROVED', currentUser, guestId, {action:'Phê duyệt khách/nhà thầu'});
+      showToast('✅ Đã phê duyệt!');
+    } catch(e) { showToast('Lỗi phê duyệt!','error'); }
+    finally { setProcessingId(null); }
+  };
+
+  const handleReject = async (guestId) => {
+    setProcessingId(guestId);
+    try {
+      await updateDoc(getDocRef('guests',guestId), { status:'rejected', rejectedBy:currentUser.name, rejectedAt:Date.now() });
+      showToast('Đã từ chối.');
+    } catch(e) { showToast('Lỗi!','error'); }
+    finally { setProcessingId(null); }
+  };
+
+  const handleBan = (guestId, guestName) => {
+    setConfirmModal({
+      title: '🚫 Khóa tài khoản',
+      message: `Khóa tài khoản của "${guestName}"? Họ sẽ không thể đăng nhập cho đến khi được mở khóa.`,
+      danger: false,
+      onConfirm: async () => {
+        setProcessingId(guestId);
+        try {
+          await updateDoc(getDocRef('guests',guestId), { status:'banned', bannedBy:currentUser.name, bannedAt:Date.now() });
+          await createAuditLog('GUEST_BANNED', currentUser, guestId, {action:'Khóa tài khoản khách/nhà thầu', guestName});
+          showToast('🚫 Đã khóa tài khoản!', 'warning');
+        } catch(e) { showToast('Lỗi khóa!','error'); }
+        finally { setProcessingId(null); }
+      }
+    });
+  };
+
+  const handleUnban = async (guestId) => {
+    setProcessingId(guestId);
+    try {
+      await updateDoc(getDocRef('guests',guestId), { status:'approved', bannedBy:null, bannedAt:null });
+      showToast('✅ Đã mở khóa tài khoản!');
+    } catch(e) { showToast('Lỗi!','error'); }
+    finally { setProcessingId(null); }
+  };
+
+  const handleDelete = (guestId, guestName) => {
+    setConfirmModal({
+      title: '🗑️ Xóa vĩnh viễn',
+      message: `XÓA HOÀN TOÀN tài khoản của "${guestName}"? Hành động này KHÔNG THỂ hoàn tác và sẽ xóa toàn bộ dữ liệu liên quan!`,
+      danger: true,
+      onConfirm: async () => {
+        setProcessingId(guestId);
+        try {
+          await deleteDoc(getDocRef('guests', guestId));
+          await createAuditLog('GUEST_DELETED', currentUser, guestId, {action:'Xóa tài khoản khách/nhà thầu', guestName});
+          if (detailGuest?.id === guestId) setDetailGuest(null);
+          if (selectedGuest?.id === guestId) setSelectedGuest(null);
+          showToast('🗑️ Đã xóa tài khoản!', 'warning');
+        } catch(e) { showToast('Lỗi xóa! Kiểm tra quyền Firestore.','error'); console.error(e); }
+        finally { setProcessingId(null); }
+      }
+    });
+  };
+
+  const handleAddNote = async () => {
+    if (!noteContent.trim() || !selectedGuest) return;
+    setAddingNote(true);
+    try {
+      await addDoc(getCollection('guest_notes'), { guestId:selectedGuest.id, guestName:selectedGuest.name, content:noteContent.trim(), type:noteType, authorId:currentUser.id, authorName:currentUser.name, timestamp:Date.now(), date:new Date().toLocaleDateString('vi-VN') });
+      setNoteContent(''); showToast('Đã thêm ghi nhận!');
+    } catch(e) { showToast('Lỗi!','error'); }
+    finally { setAddingNote(false); }
+  };
+
+  const filtered = guests.filter(g => filter==='all' || g.status===filter);
+  const pendingCount = guests.filter(g=>g.status==='pending').length;
+
+  // Helper hiển thị badge trạng thái
+  const StatusBadge = ({status}) => {
+    const cfg = status==='pending' ? {cls:'bg-yellow-50 text-yellow-700 border-yellow-200', lbl:'⏳ Chờ duyệt'}
+                : status==='approved' ? {cls:'bg-green-50 text-green-700 border-green-200', lbl:'✅ Đã duyệt'}
+                : status==='banned' ? {cls:'bg-gray-800 text-white border-gray-700', lbl:'🚫 Đã khóa'}
+                : {cls:'bg-red-50 text-red-700 border-red-200', lbl:'❌ Từ chối'};
+    return <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase border ${cfg.cls}`}>{cfg.lbl}</span>;
+  };
+
+  const pendingBookings = guestBookings.filter(b=>b.status==='pending').length;
+  const activeVisits = guestBookings.filter(b=>b.checkinAt && !b.checkoutAt).length;
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      {/* ══ Panel header ══════════════════════════════════════ */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex">
+          {[
+            {val:'guests',   icon:'👥', label:'Tài khoản',   badge:guests.filter(g=>g.status==='pending').length, color:'text-blue-700'},
+            {val:'bookings', icon:'📅', label:'Lịch đặt',    badge:pendingBookings,  color:'text-amber-700'},
+            {val:'checkin',  icon:'🏢', label:'Check-in/out',badge:activeVisits,      color:'text-emerald-700'},
+          ].map(t=>(
+            <button key={t.val} onClick={()=>setPanelTab(t.val)}
+              className={`relative flex-1 flex flex-col items-center gap-1 py-3 text-xs font-black transition border-b-2
+                ${panelTab===t.val?`border-[#0f4c81] ${t.color} bg-blue-50/50`:'border-transparent text-gray-400 hover:text-gray-600 bg-white'}`}>
+              <span className="text-lg relative">
+                {t.icon}
+                {t.badge>0 && <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[8px] font-black min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5">{t.badge}</span>}
+              </span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ─── TAB: TÀI KHOẢN ─────────────────────── */}
+      {panelTab==='guests' && (<>
+      {/* Thống kê */}
+      <div className="grid grid-cols-4 gap-2">
+        {[{l:'Chờ duyệt',c:guests.filter(g=>g.status==='pending').length,cl:'bg-yellow-50 border-yellow-200 text-yellow-700',i:'⏳'},
+          {l:'Đã duyệt',c:guests.filter(g=>g.status==='approved').length,cl:'bg-green-50 border-green-200 text-green-700',i:'✅'},
+          {l:'Từ chối',c:guests.filter(g=>g.status==='rejected').length,cl:'bg-red-50 border-red-200 text-red-700',i:'❌'},
+          {l:'Đã khóa',c:guests.filter(g=>g.status==='banned').length,cl:'bg-gray-100 border-gray-300 text-gray-700',i:'🚫'}].map(stat=>(
+          <div key={stat.l} className={`rounded-xl border p-3 text-center ${stat.cl}`}>
+            <div className="text-2xl">{stat.i}</div>
+            <div className="text-2xl font-black">{stat.c}</div>
+            <div className="text-xs font-bold uppercase">{stat.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs lọc */}
+      <div className="flex gap-1.5 bg-gray-100 rounded-xl p-1 flex-wrap">
+        {[{val:'pending',label:`Chờ${pendingCount>0?` (${pendingCount})`:''}`},{val:'approved',label:'Đã duyệt'},{val:'rejected',label:'Từ chối'},{val:'banned',label:'🚫 Khóa'},{val:'all',label:'Tất cả'}].map(tab=>(
+          <button key={tab.val} onClick={()=>setFilter(tab.val)} className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${filter===tab.val?'bg-white shadow text-gray-800':'text-gray-500 hover:text-gray-700'}`}>{tab.label}</button>
+        ))}
+      </div>
+
+      {/* Danh sách */}
+      {loading ? <div className="text-center py-8 text-gray-400"><Loader2 className="animate-spin w-8 h-8 mx-auto mb-2"/>Đang tải...</div>
+       : filtered.length===0 ? <div className="text-center py-12 text-gray-400"><UserPlus size={48} className="mx-auto mb-3 opacity-30"/><p className="font-medium">Không có dữ liệu</p></div>
+       : filtered.map(guest=>(
+        <div key={guest.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hero-card-hover">
+          <div className="p-4">
+            <div className="flex justify-between items-start mb-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${guest.type==='contractor'?'bg-orange-50':'bg-teal-50'}`}>
+                  {guest.type==='contractor'?'🏗️':'👤'}
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-black text-gray-800 truncate">{guest.name}</h4>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-xs font-mono text-gray-400">{guest.guestCode}</span>
+                    {guest.company && <><span className="text-gray-300">•</span><span className="text-xs text-gray-500">{guest.company}</span></>}
+                    <span className="text-gray-300">•</span>
+                    <span className="text-xs text-gray-400">{guest.registeredDate}</span>
+                  </div>
+                </div>
+              </div>
+              <StatusBadge status={guest.status}/>
+            </div>
+            <div className="text-xs text-gray-600 bg-gray-50 rounded-xl p-2.5 mb-3 border border-gray-100 line-clamp-2"><span className="font-bold text-gray-400 uppercase text-[10px]">Mục đích:</span> {guest.purpose}</div>
+            <div className="flex gap-2 flex-wrap">
+              {/* Phê duyệt / Từ chối */}
+              {guest.status==='pending'&&<>
+                <button onClick={()=>handleApprove(guest.id)} disabled={processingId===guest.id}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition">
+                  {processingId===guest.id?<Loader2 className="animate-spin" size={12}/>:<CheckCircle2 size={12}/>} Phê duyệt
+                </button>
+                <button onClick={()=>handleReject(guest.id)} disabled={processingId===guest.id}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">
+                  <XCircle size={12}/> Từ chối
+                </button>
+              </>}
+              {/* ★ NÚT XEM HỒ SƠ ĐẦY ĐỦ */}
+              <button onClick={()=>setDetailGuest(guest)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition shadow-sm">
+                <Eye size={12}/> Hồ sơ đầy đủ
+              </button>
+              {/* Ghi nhận */}
+              <button onClick={()=>setSelectedGuest(selectedGuest?.id===guest.id?null:guest)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100 transition border border-blue-200">
+                <Edit size={12}/> Ghi nhận
+              </button>
+              {/* Ban / Unban */}
+              {guest.status !== 'pending' && guest.status !== 'banned' && (
+                <button onClick={()=>handleBan(guest.id, guest.name)} disabled={processingId===guest.id}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 text-white rounded-lg text-xs font-bold hover:bg-black transition">
+                  🚫 Khóa
+                </button>
+              )}
+              {guest.status === 'banned' && (
+                <button onClick={()=>handleUnban(guest.id)} disabled={processingId===guest.id}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-bold hover:bg-green-200 transition border border-green-300">
+                  🔓 Mở khóa
+                </button>
+              )}
+              {/* Xóa */}
+              <button onClick={()=>handleDelete(guest.id, guest.name)} disabled={processingId===guest.id}
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition border border-red-200">
+                <Trash2 size={12}/> Xóa
+              </button>
+            </div>
+
+            {selectedGuest?.id===guest.id&&(
+              <div className="mt-3 pt-3 border-t border-gray-100 space-y-2 animate-fadeIn">
+                <div className="flex gap-2">
+                  {[{val:'info',label:'📋 Thông tin'},{val:'warning',label:'⚠️ Cảnh báo'}].map(t=>(
+                    <button key={t.val} onClick={()=>setNoteType(t.val)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${noteType===t.val?'bg-blue-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>
+                  ))}
+                </div>
+                <textarea className="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
+                  placeholder="Nhập nội dung ghi nhận..." value={noteContent} onChange={e=>setNoteContent(e.target.value)}/>
+                <button onClick={handleAddNote} disabled={addingNote||!noteContent.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-2">
+                  {addingNote?<Loader2 className="animate-spin" size={12}/>:<Save size={12}/>} Lưu ghi nhận
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {/* ══════════════════════════════════════════════════════
+          MODAL HỒ SƠ ĐẦY ĐỦ - CHỈ QUẢN LÝ THẤY
+          ══════════════════════════════════════════════════════ */}
+      {detailGuest && (
+        <div className="fixed inset-0 bg-black/70 z-[300] flex items-center justify-center p-4 backdrop-blur-sm" onClick={()=>setDetailGuest(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[95vh] flex flex-col" onClick={e=>e.stopPropagation()}>
+
+            {/* Header */}
+            <div className={`px-5 py-4 text-white flex items-center justify-between shrink-0
+              ${detailGuest.type==='contractor'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600'
+                : 'bg-gradient-to-r from-teal-600 to-emerald-700'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                  {detailGuest.type==='contractor'?'🏗️':'👤'}
+                </div>
+                <div>
+                  <h3 className="font-black text-base leading-tight">{detailGuest.name}</h3>
+                  <p className="text-white/70 text-xs mt-0.5">
+                    {detailGuest.type==='contractor'?'Nhà thầu phụ':'Khách thăm quan'} • {detailGuest.registeredDate}
+                  </p>
+                </div>
+              </div>
+              <button onClick={()=>setDetailGuest(null)} className="text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-1.5 transition"><X size={18}/></button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto">
+
+              {/* Trạng thái banner */}
+              {detailGuest.status==='approved' && (
+                <div className="bg-green-50 border-b border-green-200 px-5 py-2 flex items-center gap-2">
+                  <BadgeCheck size={14} className="text-green-600 shrink-0"/>
+                  <span className="text-xs font-bold text-green-700">Đã phê duyệt{detailGuest.approvedBy ? ` bởi ${detailGuest.approvedBy}` : ''}</span>
+                </div>
+              )}
+              {detailGuest.status==='pending' && (
+                <div className="bg-yellow-50 border-b border-yellow-200 px-5 py-2 flex items-center gap-2">
+                  <Clock size={14} className="text-yellow-600 shrink-0"/>
+                  <span className="text-xs font-bold text-yellow-700">Đang chờ phê duyệt</span>
+                </div>
+              )}
+              {detailGuest.status==='rejected' && (
+                <div className="bg-red-50 border-b border-red-200 px-5 py-2 flex items-center gap-2">
+                  <XCircle size={14} className="text-red-600 shrink-0"/>
+                  <span className="text-xs font-bold text-red-700">Đã bị từ chối</span>
+                </div>
+              )}
+              {detailGuest.status==='banned' && (
+                <div className="bg-gray-900 border-b border-gray-700 px-5 py-2 flex items-center gap-2">
+                  <span className="text-sm">🚫</span>
+                  <span className="text-xs font-bold text-white">Tài khoản đã bị khóa{detailGuest.bannedBy ? ` bởi ${detailGuest.bannedBy}` : ''}</span>
+                </div>
+              )}
+
+              <div className="p-5 space-y-4">
+                {/* ── THÔNG TIN CÁ NHÂN ── */}
+                <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Thông tin cá nhân</p>
+                  <div className="bg-gray-50 rounded-xl border border-gray-200 divide-y divide-gray-100 text-sm">
+                    {[
+                      {l:'Họ tên', v:detailGuest.name, bold:true},
+                      {l:'Loại', v:detailGuest.type==='contractor'?'🏗️ Nhà thầu phụ':'👤 Khách thăm'},
+                      {l:'Công ty', v:detailGuest.company||'—'},
+                      {l:'Điện thoại', v:detailGuest.phone, mono:true},
+                    ].map(({l,v,bold,mono})=>(
+                      <div key={l} className="px-4 py-2.5 flex justify-between items-center gap-3">
+                        <span className="text-gray-500 text-xs font-semibold shrink-0">{l}</span>
+                        <span className={`text-right ${bold?'font-black text-gray-800':'font-medium text-gray-700'} ${mono?'font-mono':''}`}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── THÔNG TIN ĐĂNG KÝ ── */}
+                <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Thông tin đăng ký</p>
+                  <div className="bg-gray-50 rounded-xl border border-gray-200 divide-y divide-gray-100 text-sm">
+                    <div className="px-4 py-2.5 flex justify-between items-center gap-3">
+                      <span className="text-gray-500 text-xs font-semibold shrink-0">Mã đăng ký</span>
+                      <span className="font-mono font-black text-indigo-700">{detailGuest.guestCode}</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between items-start gap-3">
+                      <span className="text-gray-500 text-xs font-semibold shrink-0 pt-0.5">Mục đích</span>
+                      <span className="font-medium text-gray-700 text-right text-xs">{detailGuest.purpose}</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between items-center gap-3">
+                      <span className="text-gray-500 text-xs font-semibold shrink-0">Ngày đăng ký</span>
+                      <span className="font-medium text-gray-700">{detailGuest.registeredDate}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── CCCD & MẬT KHẨU — CHỈ QUẢN LÝ ── */}
+                <div>
+                  <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                    <ShieldAlert size={11}/> Thông tin bảo mật (chỉ Quản lý)
+                  </p>
+                  <div className="bg-red-50 rounded-xl border border-red-200 divide-y divide-red-100 text-sm">
+                    <div className="px-4 py-3 flex justify-between items-center gap-3">
+                      <span className="text-red-500 text-xs font-bold shrink-0 flex items-center gap-1">
+                        <CreditCard size={11}/> CCCD / HC
+                      </span>
+                      <span className="font-mono font-black text-red-800 tracking-wide">{detailGuest.idCard}</span>
+                    </div>
+                    <div className="px-4 py-3 flex justify-between items-center gap-3">
+                      <span className="text-red-500 text-xs font-bold shrink-0 flex items-center gap-1">
+                        <KeyRound size={11}/> Mật khẩu
+                      </span>
+                      <span className="font-mono font-black text-red-800 tracking-[0.3em] text-base">
+                        {detailGuest.tempPassword || detailGuest.idCard?.replace(/\s/g,'').slice(-6) || '------'}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-red-400 mt-1.5 flex items-center gap-1">
+                    <Info size={10}/> Mật khẩu = 6 số cuối CCCD. Không chia sẻ với người không có thẩm quyền.
+                  </p>
+                </div>
+
+                {/* ── MÃ QR + NÚT TẢI THẺ ── */}
+                <div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                    <QrCode size={11}/> Mã QR Cá nhân
+                  </p>
+                  {detailGuest.qrToken ? (
+                    <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-xl border border-teal-200 p-4 flex flex-col items-center gap-2">
+                      <QRCodeDisplay
+                        value={detailGuest.qrToken}
+                        size={160}
+                        employeeName={detailGuest.name}
+                        employeeCode={detailGuest.guestCode}
+                        cardSubtitle={detailGuest.type==='contractor'?'Nhà thầu phụ':'Khách thăm quan'}
+                        cardGroup={detailGuest.company||''}
+                        isGuestCard={true}
+                        showDownloadBtn={true}
+                      />
+                      <p className="text-[9px] text-teal-400 font-mono break-all text-center">{detailGuest.qrToken}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-400">
+                      <QrCode size={28} className="mx-auto mb-2 opacity-40"/>
+                      <p className="text-xs font-medium">Chưa có mã QR</p>
+                      <p className="text-[10px] mt-0.5 text-gray-300">Đăng ký cũ / chưa được tạo mã</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="px-5 py-3 border-t border-gray-100 flex flex-col gap-2 shrink-0 bg-gray-50/80">
+              {detailGuest.status==='pending' && (
+                <div className="flex gap-2">
+                  <button onClick={()=>{handleApprove(detailGuest.id); setDetailGuest(null);}}
+                    className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5">
+                    <CheckCircle2 size={13}/> Phê duyệt
+                  </button>
+                  <button onClick={()=>{handleReject(detailGuest.id); setDetailGuest(null);}}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5">
+                    <XCircle size={13}/> Từ chối
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                {detailGuest.status !== 'pending' && detailGuest.status !== 'banned' && (
+                  <button onClick={()=>{ handleBan(detailGuest.id, detailGuest.name); setDetailGuest(null); }}
+                    className="flex-1 py-2.5 bg-gray-800 hover:bg-black text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5">
+                    🚫 Khóa tài khoản
+                  </button>
+                )}
+                {detailGuest.status === 'banned' && (
+                  <button onClick={()=>{ handleUnban(detailGuest.id); setDetailGuest(null); }}
+                    className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5">
+                    🔓 Mở khóa
+                  </button>
+                )}
+                <button onClick={()=>{ handleDelete(detailGuest.id, detailGuest.name); }}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5">
+                  <Trash2 size={13}/> Xóa vĩnh viễn
+                </button>
+                <button onClick={()=>setDetailGuest(null)}
+                  className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl text-xs font-bold transition">
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </>) /* end panelTab==='guests' */}
+
+      {/* ─── TAB: LỊCH ĐẶT ─────────────────────── */}
+      {panelTab==='bookings' && (
+        <div className="space-y-3">
+          {/* Filter */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {[{v:'pending',l:`⏳ Chờ duyệt${guestBookings.filter(b=>b.status==='pending').length>0?' ('+guestBookings.filter(b=>b.status==='pending').length+')':''}`,},{v:'approved',l:'✅ Đã duyệt'},{v:'rejected',l:'❌ Từ chối'},{v:'all',l:'Tất cả'}].map(t=>(
+              <button key={t.v} onClick={()=>setBookingFilter(t.v)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${bookingFilter===t.v?'bg-white shadow text-gray-800':'text-gray-500'}`}>{t.l}</button>
+            ))}
+          </div>
+          {/* Danh sách */}
+          {guestBookings.filter(b=> bookingFilter==='all'||b.status===bookingFilter).length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <CalendarDays size={48} className="mx-auto mb-3 opacity-30"/>
+              <p className="font-medium">Chưa có lịch đặt nào</p>
+            </div>
+          ) : guestBookings.filter(b=> bookingFilter==='all'||b.status===bookingFilter).map(booking => {
+            const isPend = booking.status==='pending';
+            const isApproved = booking.status==='approved';
+            return (
+              <div key={booking.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="font-black text-gray-800 text-sm">{booking.guestName}</p>
+                    <p className="text-xs text-gray-400">{booking.guestCode} • {booking.company||'Khách'}</p>
+                  </div>
+                  <span className={`text-[10px] font-black px-2 py-1 rounded-full ${isPend?'bg-yellow-100 text-yellow-700':isApproved?'bg-green-100 text-green-700':'bg-red-100 text-red-600'}`}>
+                    {isPend?'⏳ Chờ duyệt':isApproved?'✅ Đã duyệt':'❌ Từ chối'}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2 border border-gray-100 mb-2 space-y-0.5">
+                  <p>📅 Ngày: <b>{booking.visitDate}</b></p>
+                  <p>🕐 Giờ: <b>{booking.timeStart}{booking.timeEnd?' – '+booking.timeEnd:''}</b></p>
+                  <p>📋 Mục đích: {booking.purpose}</p>
+                  {booking.notes && <p className="text-blue-500 italic">"{booking.notes}"</p>}
+                </div>
+                {booking.checkinAt && (
+                  <div className="text-xs text-teal-600 font-bold mb-2">
+                    🏢 Đã vào lúc {new Date(booking.checkinAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}
+                    {booking.checkoutAt && ` • Ra lúc ${new Date(booking.checkoutAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})} • ${Math.round((booking.checkoutAt-booking.checkinAt)/60000)} phút`}
+                  </div>
+                )}
+                {isPend && (
+                  <div className="flex gap-2">
+                    <button onClick={()=>handleApproveBooking(booking.id)} disabled={processingBookingId===booking.id}
+                      className="flex-1 py-2 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center gap-1">
+                      {processingBookingId===booking.id?<Loader2 className="animate-spin" size={12}/>:<CheckCircle2 size={12}/>} Duyệt lịch
+                    </button>
+                    <button onClick={()=>handleRejectBooking(booking.id)} disabled={processingBookingId===booking.id}
+                      className="flex-1 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-black hover:bg-red-200 transition border border-red-200 flex items-center justify-center gap-1">
+                      <XCircle size={12}/> Từ chối
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── TAB: CHECK-IN / CHECK-OUT ─────────────── */}
+      {panelTab==='checkin' && (
+        <div className="space-y-4">
+          {/* QR/Code manual input */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-[#0f4c81] px-5 py-4 text-white">
+              <h3 className="font-black text-base flex items-center gap-2"><QrCode size={17}/>Xác nhận Vào / Ra cổng</h3>
+              <p className="text-blue-200 text-xs mt-0.5">Nhập mã QR — hệ thống tự xác định Check-in hoặc Check-out</p>
+            </div>
+            <div className="p-4 flex gap-2">
+              <input type="text" autoFocus
+                className="flex-1 px-4 py-3 border-2 rounded-xl outline-none focus:border-[#0f4c81] font-mono text-sm uppercase bg-gray-50 focus:bg-white transition"
+                placeholder="GUEST-CONG TY-TEN-DDMMYYYY" value={qrCheckinCode}
+                onChange={e=>setQrCheckinCode(e.target.value.toUpperCase())}
+                onKeyDown={e=>{ if(e.key==='Enter') handleQRCheckin(); }}/>
+              <button onClick={()=>handleQRCheckin()} disabled={processingCheckin||!qrCheckinCode.trim()}
+                className="px-5 py-3 bg-[#0f4c81] hover:bg-[#1a6fc4] text-white rounded-xl font-black text-sm transition disabled:opacity-50 flex items-center gap-2 active:scale-95">
+                {processingCheckin?<Loader2 className="animate-spin" size={16}/>:<CheckCircle2 size={16}/>}
+                {processingCheckin?'Đang xử lý...':'Xác nhận'}
+              </button>
+            </div>
+          </div>
+
+          {/* Khách đang trong cảng */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-teal-50 px-4 py-3 border-b border-teal-100 flex items-center gap-2">
+              <span className="text-lg">🏢</span>
+              <h3 className="font-bold text-teal-700">Đang trong cảng</h3>
+              <span className="ml-auto bg-teal-100 text-teal-700 text-xs font-black px-2 py-0.5 rounded-full">
+                {guestBookings.filter(b=>b.checkinAt&&!b.checkoutAt).length} người
+              </span>
+            </div>
+            {guestBookings.filter(b=>b.checkinAt&&!b.checkoutAt).length===0 ? (
+              <div className="p-8 text-center text-gray-400">
+                <p className="text-sm">Không có khách nào đang trong cảng</p>
+              </div>
+            ) : guestBookings.filter(b=>b.checkinAt&&!b.checkoutAt).map(visit=>{
+              const dur = Math.round((Date.now()-visit.checkinAt)/60000);
+              const durStr = dur>=60?`${Math.floor(dur/60)}h ${dur%60}p`:`${dur} phút`;
+              return (
+                <div key={visit.id} className="p-4 border-b last:border-0 hover:bg-gray-50">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-bold text-sm text-gray-800">{visit.guestName}</p>
+                      <p className="text-xs text-gray-400">{visit.guestCode} • {visit.company||'Khách'}</p>
+                      <p className="text-xs text-teal-600 font-bold mt-0.5">
+                        ⏱ Đã trong cảng {durStr} — vào lúc {new Date(visit.checkinAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}
+                      </p>
+                    </div>
+                    <button onClick={()=>handleQRCheckin(visit.guestCode)} disabled={processingCheckin}
+                      className="px-3 py-2 bg-red-100 text-red-700 rounded-xl text-xs font-black hover:bg-red-200 transition border border-red-200">
+                      🚪 Check-out
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Lịch sử hôm nay */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+              <span className="text-lg">📋</span>
+              <h3 className="font-bold text-gray-700">Lịch sử hôm nay</h3>
+            </div>
+            {guestBookings.filter(b=>b.checkoutAt && b.visitDate===new Date().toISOString().split('T')[0]).length===0 ? (
+              <div className="p-6 text-center text-gray-400 text-sm">Chưa có lịch sử check-out hôm nay</div>
+            ) : guestBookings.filter(b=>b.checkoutAt && b.visitDate===new Date().toISOString().split('T')[0]).map(visit=>{
+              const dur = visit.duration || Math.round((visit.checkoutAt-visit.checkinAt)/60000);
+              const durStr = dur>=60?`${Math.floor(dur/60)}h ${dur%60>0?dur%60+'p':''}`:dur+' phút';
+              return (
+                <div key={visit.id} className="p-4 border-b last:border-0">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="font-bold text-sm text-gray-800">{visit.guestName}</p>
+                      <p className="text-xs text-gray-400">{new Date(visit.checkinAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})} → {new Date(visit.checkoutAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</p>
+                    </div>
+                    <span className="text-sm font-black text-teal-700 bg-teal-50 px-3 py-1 rounded-xl border border-teal-100">⏱ {durStr}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          CONFIRM MODAL - Thay thế window.confirm (bị block trong iframe)
+          ══════════════════════════════════════════════════════ */}
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 backdrop-blur-sm" onClick={()=>setConfirmModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fadeIn" onClick={e=>e.stopPropagation()}>
+            <div className={`px-6 py-4 ${confirmModal.danger ? 'bg-red-600' : 'bg-gray-800'}`}>
+              <h3 className="text-white font-black text-lg">{confirmModal.title}</h3>
+            </div>
+            <div className="p-5">
+              <p className="text-gray-700 text-sm leading-relaxed">{confirmModal.message}</p>
+            </div>
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={()=>setConfirmModal(null)}
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-bold transition">
+                Hủy
+              </button>
+              <button onClick={async ()=>{ const fn = confirmModal.onConfirm; setConfirmModal(null); await fn(); }}
+                className={`flex-1 py-3 text-white rounded-xl text-sm font-black transition ${confirmModal.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-800 hover:bg-black'}`}>
+                {confirmModal.danger ? '🗑️ Xóa ngay' : '✅ Xác nhận'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- COMPONENT TÁI SỬ DỤNG: THẺ CHI TIẾT BÁO CÁO (ACTIVITY FEED CARD) ---
+// UPDATED: Thêm prop onEditRequest để xử lý nút sửa
+const ActivityFeedCard = ({ item, employees, currentUser, onPostComment, commentText, setCommentText, onUserClick, onEditRequest, onEquipmentClick }) => {
+    const theme = getThemeColors(currentUser?.group, currentUser?.code);
+    const author = employees.find(e => e.id === item.employeeId) || { name: 'Người dùng ẩn danh' };
+    
+    // CẬP NHẬT: Phân biệt dựa trên dữ liệu hoặc CỜ MẤT AN TOÀN (từ GEMBA)
+    const isSafety = item.severity !== undefined || item.type === 'SAFETY' || item.reportType === 'Báo cáo an toàn' || item.isSafetyRisk; 
+    
+    const badgeColor = isSafety ? 'bg-red-100 text-red-700 border-red-200' : 'bg-blue-100 text-blue-800 border-blue-200';
+    const borderColor = isSafety ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-blue-500';
+
+    // Logic kiểm tra quyền Admin/Manager để hiện nút sửa
+    const isAdminOrManager = currentUser && (
+        ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(currentUser.group) || 
+        currentUser.id === 'SUPER_ADMIN'
+    );
+
+    // CHỈ HIỆN NÚT SỬA KHI ĐÃ CÓ TRẠNG THÁI (APPROVED/REJECTED)
+    const canEdit = isAdminOrManager && (item.status === 'Approved' || item.status === 'Rejected');
+
+    return (
+        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-5 ${borderColor}`}>
+            {/* Feed Header */}
+            <div className="flex justify-between items-start mb-3">
+                {/* BỔ SUNG: Cho phép click vào Avatar/Tên để xem chi tiết nhân viên */}
+                <div 
+                    className={`flex items-center gap-3 ${onUserClick ? 'cursor-pointer group' : ''}`}
+                    onClick={() => onUserClick && onUserClick(author.id)}
+                >
+                    <Avatar src={author?.avatar} alt={author?.name} size="sm" theme={getThemeColors(author?.group, author?.code)}/>
+                    <div>
+                        <p className={`font-bold text-gray-800 text-sm ${onUserClick ? 'group-hover:text-indigo-600 transition' : ''}`}>
+                            {author?.name}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <span>{item.date}</span>
+                            {/* CẬP NHẬT: Ưu tiên hiển thị Loại báo cáo của Quản lý nếu có */}
+                            {item.reportType ? (
+                                <span className={`font-bold ${item.isSafetyRisk ? 'text-red-600' : 'text-indigo-600'}`}>
+                                    • {item.reportType}
+                                </span>
+                            ) : (
+                                <>
+                                    {item.severity && <span>• Mức độ: {item.severity}</span>}
+                                    {item.impact && <span>• Tác động: {item.impact}</span>}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold border uppercase tracking-wider ${badgeColor}`}>
+                        {item.reportType ? (item.isSafetyRisk ? 'GEMBA (CÓ RỦI RO)' : 'Báo cáo QL') : (isSafety ? 'An toàn' : 'Sáng kiến')}
+                    </span>
+                    
+                    {/* NEW: EDIT ICON (NHIỆM VỤ 3) - CHỈ HIỆN KHI CÓ QUYỀN VÀ ĐÃ XỬ LÝ */}
+                    {canEdit && onEditRequest && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onEditRequest(item); }}
+                            className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition"
+                            title="Chỉnh sửa / Thu hồi quyết định"
+                        >
+                            <Edit size={14} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Feed Content */}
+            <div className="mb-4">
+                {/* CẬP NHẬT: Hiển thị Tiêu đề báo cáo nếu có */}
+                {item.title && <h4 className="font-black text-gray-800 text-lg mb-2 leading-tight">{item.title}</h4>}
+                
+                <SmartContent text={item.content} isSafety={isSafety} onEquipmentClick={onEquipmentClick} />
+                
+                {/* CẬP NHẬT: Hiển thị nhiều ảnh kèm chú thích cho Báo cáo Quản lý */}
+                {item.images && item.images.length > 0 && (
+                    <div className={`grid gap-3 mt-4 ${item.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                        {item.images.map((img, idx) => (
+                            <div key={idx} className="flex flex-col gap-1.5 bg-gray-50 p-2 rounded-xl border border-gray-100 shadow-sm">
+                                <ImagePreview src={img.src} alt={`Ảnh ${idx+1}`} className="w-full h-48 object-cover rounded-lg"/>
+                                {img.caption && <span className="text-xs text-gray-600 font-medium italic text-center px-1">"{img.caption}"</span>}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Giữ lại hiển thị ảnh đơn cũ cho tương thích ngược */}
+                {!item.images && item.image && (
+                    <div className="mt-3">
+                        <ImagePreview src={item.image} alt="Đính kèm" className="max-h-64 w-auto rounded-lg border border-gray-200 shadow-sm object-contain"/>
+                    </div>
+                )}
+            </div>
+
+            {/* Manager Official Decision */}
+            {item.managerFeedback && (
+                <div className="mb-4 pl-3 border-l-4 border-indigo-200 bg-indigo-50 p-3 rounded-r-lg text-xs">
+                    <div className="flex items-center gap-2 mb-1">
+                        <UserCheck size={14} className="text-indigo-600"/>
+                        <span className="font-bold text-indigo-700 uppercase">
+                            {item.processorName ? `${item.processorName} (${item.processorCode} - ${item.processorGroup}) ĐÃ PHẢN HỒI` : 'QUẢN LÝ ĐÃ PHẢN HỒI'}
+                        </span>
+                        <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold text-white ${item.status === 'Approved' ? 'bg-green-500' : 'bg-red-500'}`}>
+                            {item.status === 'Approved' ? 'ĐÃ DUYỆT' : 'TỪ CHỐI'}
+                        </span>
+                    </div>
+                    <p className="text-indigo-900 italic">"{item.managerFeedback}"</p>
+                </div>
+            )}
+
+            {/* NEW: LINK BACK TO CHECKLIST IF AUTO-GENERATED */}
+            {item.isFromChecklist && item.equipmentId && (
+                <div className="mb-4">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); if (onEquipmentClick) onEquipmentClick(item.equipmentId); }}
+                        className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 font-bold px-3 py-1.5 rounded-lg border border-indigo-200 text-xs hover:bg-indigo-100 transition shadow-sm active:scale-95"
+                    >
+                        <ClipboardCheck size={14}/>
+                        🔗 Xem lịch sử Checklist [{item.equipmentId}]
+                    </button>
+                </div>
+            )}
+
+            {/* Comments Section */}
+            <div className="border-t border-gray-100 pt-3">
+                <div className="flex items-center gap-2 mb-3 text-gray-400 text-xs font-bold uppercase">
+                    <MessageSquare size={12}/> Thảo luận ({item.comments?.length || 0})
+                </div>
+                
+                {item.comments && item.comments.length > 0 && (
+                    <div className="space-y-3 mb-4 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                        {item.comments.map((c, idx) => (
+                            <div key={idx} className="flex gap-2 items-start animate-fadeIn">
+                                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-600 shrink-0 border border-white shadow-sm">
+                                    {getInitials(c.authorName)}
+                                </div>
+                                <div className="bg-gray-100 rounded-2xl rounded-tl-none px-3 py-2 text-xs text-gray-700 max-w-[90%]">
+                                    <div className="flex justify-between items-center gap-4 mb-0.5">
+                                        <span className="font-bold text-gray-900">{c.authorName}</span>
+                                        <span className="text-[10px] text-gray-400">
+                                            {new Date(c.timestamp).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}
+                                        </span>
+                                    </div>
+                                    <p>{c.content}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Input Box */}
+                <div className="flex gap-2 items-center">
+                    <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="sm" theme={theme}/>
+                    <div className="relative flex-grow">
+                        <input 
+                            type="text" 
+                            className={`w-full bg-gray-50 border border-gray-200 rounded-full pl-4 pr-10 py-2 text-sm outline-none transition ${theme.primaryRing}`}
+                            placeholder="Viết bình luận..."
+                            value={commentText[item.id] || ''}
+                            onChange={(e) => setCommentText(prev => ({...prev, [item.id]: e.target.value}))}
+                            onKeyDown={(e) => e.key === 'Enter' && onPostComment(item, commentText[item.id])}
+                        />
+                        <button 
+                            onClick={() => onPostComment(item, commentText[item.id])}
+                            disabled={!commentText[item.id]?.trim()}
+                            className={`absolute right-1 top-1 p-1.5 ${theme.primaryBg} text-white rounded-full ${theme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed transition`}
+                        >
+                            <Send size={14}/>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ==========================================
+// 5. CHECKLIST WORKSPACE COMPONENT
+// ==========================================
+
+const ChecklistWorkspace = ({ currentUser, showToast }) => {
+    const theme = getThemeColors(currentUser?.group, currentUser?.code);
+    // 5.1 STATE MANAGEMENT
+    const [selectedType, setSelectedType] = useState('RTG'); 
+    const [selectedId, setSelectedId] = useState(''); 
+    const [meterReading, setMeterReading] = useState(''); 
+    const [fuelLevel, setFuelLevel] = useState(''); 
+    const [expandedGroups, setExpandedGroups] = useState({}); 
+    const [checklistData, setChecklistData] = useState({});
+    const [checklistMode, setChecklistMode] = useState('checklist'); // 'checklist' | 'fuel_update'
+    
+    // Alerting States
+    const [showStopWorkModal, setShowStopWorkModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // 5.2 Helper: Get Previous History & Schema
+    const getPreviousShiftStatus = (id) => {
+        if (!id) return null;
+        const key = Object.keys(MOCK_HISTORY).find(k => k.toUpperCase() === id.toUpperCase());
+        return key ? MOCK_HISTORY[key] : null;
+    };
+
+    const currentShift = useMemo(() => {
+        const now = new Date();
+        const timeValue = now.getHours() + now.getMinutes() / 60; 
+        // CẬP NHẬT: D1 từ 07:30 (7.5) đến 19:30 (19.5)
+        return (timeValue >= 7.5 && timeValue < 19.5) ? 'D1' : 'D2';
+    }, []);
+
+    const currentSchema = CHECKLIST_SCHEMA[selectedType];
+    const previousHistory = getPreviousShiftStatus(selectedId);
+
+    // 5.3 VALIDATION LOGIC
+    const validateHeader = () => {
+        if (!selectedId) {
+            showToast("Vui lòng nhập Mã thiết bị!", "error");
+            return false;
+        }
+
+        // Logic mới: Bỏ qua check Meter/Fuel cho Checker, QC và WCO
+        if (selectedType === 'DWC' || selectedType === 'QC') {
+            return true;
+        }
+
+        // Validate Fuel (Bắt buộc cho RTG, Truck, RS...)
+        if (fuelLevel === '' || fuelLevel === null) {
+            showToast("Vui lòng nhập mức nhiên liệu!", "error");
+            return false;
+        }
+        const fuel = parseInt(fuelLevel);
+        if (isNaN(fuel) || fuel < 0 || fuel > 100) {
+            showToast("Nhiên liệu phải từ 0% đến 100%!", "error");
+            return false;
+        }
+
+        // Validate Meter (Optional, nhưng nếu nhập thì phải đúng logic tăng)
+        if (meterReading && meterReading.trim() !== '') {
+             const currentMeter = parseInt(meterReading);
+             const prevMeter = MOCK_METERS[selectedId.toUpperCase()] || 0;
+             if (!isNaN(currentMeter) && currentMeter < prevMeter) {
+                 // Meter validation removed
+                 return false;
+             }
+        }
+        
+        return true;
+    };
+
+    const validateItemsEvidence = () => {
+        // Duyệt qua tất cả items đã check
+        for (const [itemId, data] of Object.entries(checklistData)) {
+            if ((data.status === 'WARNING' || data.status === 'CRITICAL') && (!data.note || !data.note.trim())) {
+                // Tìm tên label để báo lỗi cụ thể
+                let itemName = itemId;
+                currentSchema?.forEach(group => {
+                    const found = group.items.find(i => i.id === itemId);
+                    if (found) itemName = found.label;
+                });
+                
+                showToast(`Thiếu ghi chú cho lỗi: ${itemName}`, "error");
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // 5.4 HANDLERS
+    const handleIdChange = (e) => setSelectedId(e.target.value.toUpperCase());
+
+    const toggleGroup = (groupIndex) => {
+        setExpandedGroups(prev => ({ ...prev, [groupIndex]: !prev[groupIndex] }));
+    };
+
+    const handleStatusChange = (itemId, status) => {
+        setChecklistData(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], status: status }
+        }));
+    };
+
+    const handleNoteChange = (itemId, text) => {
+        setChecklistData(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], note: text }
+        }));
+    };
+
+    // --- NEW: UNSAFE TOGGLE HANDLER ---
+    const handleUnsafeToggle = (itemId) => {
+        setChecklistData(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], isUnsafe: !prev[itemId]?.isUnsafe }
+        }));
+    };
+
+    // --- NEW: IMAGE UPLOAD HANDLERS (NHIỆM VỤ 2) ---
+    const handleImageUpload = async (itemId, e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            showToast("Vui lòng chỉ chọn file ảnh!", "error");
+            return;
+        }
+
+        try {
+            // Sử dụng resizeImage có sẵn để nén và chuyển thành base64
+            const resizedImage = await resizeImage(file);
+            
+            setChecklistData(prev => ({
+                ...prev,
+                [itemId]: { ...prev[itemId], image: resizedImage }
+            }));
+            showToast("Đã tải ảnh lên!");
+        } catch (error) {
+            console.error("Image upload error:", error);
+            showToast("Lỗi xử lý ảnh!", "error");
+        }
+    };
+
+    const handleRemoveImage = (itemId) => {
+        setChecklistData(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], image: null }
+        }));
+    };
+
+    // --- NEW: SUBMISSION FLOWS ---
+
+    // Flow 1: Save Data to Firestore (Mocked logic inside)
+    const saveData = async (isCritical = false) => {
+        setIsSubmitting(true);
+        try {
+            const payload = {
+                type: selectedType,
+                equipmentId: selectedId,
+                meter: meterReading,
+                fuel: fuelLevel,
+                shift: currentShift,
+                reporterId: currentUser.id,
+                reporterName: currentUser.name,
+                data: checklistData,
+                status: isCritical ? 'CRITICAL' : 'OK',
+                timestamp: Date.now(),
+                date: getCurrentDate()
+            };
+
+            await addDoc(getCollection('checklist_logs'), payload);
+            
+            // --- NEW LOGIC: AUTO-CREATE PENDING SAFETY REPORT IF UNSAFE IS CHECKED ---
+            const unsafeItems = Object.entries(checklistData).filter(([key, data]) => data.isUnsafe);
+            
+            if (unsafeItems.length > 0) {
+                let safetyContent = `[TỪ CHECKLIST THIẾT BỊ - ${selectedId}]\nPhát hiện các mối nguy mất an toàn:\n`;
+                unsafeItems.forEach(([key, data]) => {
+                    const label = getChecklistItemLabel(selectedType, key);
+                    safetyContent += `- ${label}: ${data.note || 'Không có ghi chú'}\n`;
+                });
+                
+                // Lấy ảnh đầu tiên làm ảnh minh chứng cho báo cáo an toàn
+                const firstImage = unsafeItems.find(([key, data]) => data.image)?.[1].image || null;
+
+                await addDoc(getCollection('safety_reports'), {
+                    employeeId: currentUser.id,
+                    content: safetyContent,
+                    severity: 'Cao', // Mặc định mức Cao vì báo từ Checklist sự cố
+                    image: firstImage,
+                    status: 'Pending', // QUAN TRỌNG: Chờ duyệt mới thành báo cáo chính thức
+                    date: getCurrentDate(),
+                    timestamp: Date.now(),
+                    isFromChecklist: true,
+                    isStopWork: isCritical, // FLAG: Đánh dấu Stop Work để Admin ưu tiên xử lý
+                    equipmentId: selectedId // CẬP NHẬT: Lưu lại mã thiết bị để link ngược lại sau này
+                });
+                
+                if (isCritical) console.warn("🚨 ALERT SENT TO SUPERVISOR: STOP WORK REQUESTED FOR " + selectedId);
+                
+                setChecklistData({});
+                setMeterReading('');
+                setFuelLevel('');
+                setSelectedId('');
+                setShowStopWorkModal(false);
+                
+                if (!isCritical) showToast("Đã gửi Checklist & Tạo yêu cầu duyệt Báo cáo An toàn!");
+            } else {
+                if (isCritical) console.warn("🚨 ALERT SENT TO SUPERVISOR: STOP WORK REQUESTED FOR " + selectedId);
+                
+                setChecklistData({});
+                setMeterReading('');
+                setFuelLevel('');
+                setSelectedId('');
+                setShowStopWorkModal(false);
+                
+                if (!isCritical) showToast("Gửi báo cáo thành công!");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("Lỗi khi gửi báo cáo!", "error");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Flow FUEL: Save fuel-only update
+    const handleFuelUpdate = async () => {
+        if (!selectedId) {
+            showToast("Vui lòng chọn Mã thiết bị!", "error");
+            return;
+        }
+        if (fuelLevel === '' || fuelLevel === null) {
+            showToast("Vui lòng nhập mức nhiên liệu!", "error");
+            return;
+        }
+        const fuel = parseInt(fuelLevel);
+        if (isNaN(fuel) || fuel < 0 || fuel > 100) {
+            showToast("Nhiên liệu phải từ 0% đến 100%!", "error");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await addDoc(getCollection('checklist_logs'), {
+                type: selectedType,
+                equipmentId: selectedId,
+                meter: '',
+                fuel: fuelLevel,
+                shift: currentShift,
+                reporterId: currentUser.id,
+                reporterName: currentUser.name,
+                data: {},
+                status: 'FUEL_UPDATE',
+                isFuelOnly: true,
+                timestamp: Date.now(),
+                date: getCurrentDate()
+            });
+            setFuelLevel('');
+            showToast("✅ Đã cập nhật nhiên liệu thành công!");
+        } catch (e) {
+            console.error(e);
+            showToast("Lỗi khi gửi!", "error");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Flow 2: Happy Path Button (Submit All Good)
+    const handleQuickSubmit = () => {
+        // Auto-fill OK for all items (skip numeric-input items)
+        const allGoodData = {};
+        currentSchema.forEach(group => {
+            group.items.forEach(item => {
+                if (item.inputType === 'number') return; // skip, must be manually entered
+                allGoodData[item.id] = { status: 'OK' };
+            });
+        });
+        setChecklistData(allGoodData);
+        showToast("Đã chọn tất cả là Tốt. Vui lòng kiểm tra và nhấn Gửi Checklist.");
+    };
+
+    // Flow 3: Normal Submit Button
+    const handleNormalSubmit = () => {
+        if (!validateHeader()) return;
+        if (!validateItemsEvidence()) return;
+
+        // Check for Stop Work Condition
+        const hasCritical = Object.values(checklistData).some(item => item.status === 'CRITICAL');
+        
+        if (hasCritical) {
+            setShowStopWorkModal(true); // Trigger Alert Modal
+        } else {
+            saveData(false);
+        }
+    };
+
+    // Initialize groups
+    useEffect(() => {
+        if(currentSchema) {
+            const allExpanded = {};
+            currentSchema.forEach((_, idx) => allExpanded[idx] = true);
+            setExpandedGroups(allExpanded);
+            setChecklistData({});
+            setMeterReading('');
+            setFuelLevel('');
+            // Đã gỡ dòng setChecklistMode('checklist') để giữ nguyên trạng thái Tab khi đổi loại thiết bị
+            
+            // LOGIC MỚI: Tự động chọn mã đầu tiên nếu có trong danh sách chuẩn
+            if (VALID_EQUIPMENT_LIST[selectedType]) {
+                const firstId = VALID_EQUIPMENT_LIST[selectedType][0];
+                setSelectedId(firstId === '__OTHER__' ? '' : firstId);
+            } else {
+                setSelectedId(''); // Reset nếu là DWC hoặc loại khác
+            }
+        }
+    }, [selectedType]);
+
+    return (
+        <div className="space-y-4 animate-fadeIn relative">
+            {/* --- TOP ACTIONS --- */}
+            <div className="flex justify-between items-center mb-2 gap-2">
+                 {/* MODE TOGGLE: Luôn hiển thị để người dùng dễ dàng chuyển đổi */}
+                 <div className="flex bg-gray-100 rounded-xl p-1 gap-1 shadow-inner">
+                     <button
+                         onClick={() => setChecklistMode('checklist')}
+                         className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition ${checklistMode === 'checklist' ? 'bg-white shadow text-blue-700 border border-blue-100' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                         <ClipboardCheck size={15}/> Checklist Tổng
+                     </button>
+                     <button
+                         onClick={() => {
+                             setChecklistMode('fuel_update');
+                             // Tự động chuyển loại thiết bị nếu loại hiện tại không hỗ trợ đổ dầu
+                             if (!OIL_EQUIPMENT_TYPES.includes(selectedType)) {
+                                 setSelectedType('RTG');
+                             }
+                         }}
+                         className={`px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 transition ${checklistMode === 'fuel_update' ? 'bg-white shadow text-orange-700 border border-orange-100' : 'text-gray-500 hover:text-gray-700'}`}
+                     >
+                         <Fuel size={15}/> Cập nhật Đổ dầu
+                     </button>
+                 </div>
+                 {checklistMode === 'checklist' && (
+                     <button 
+                        onClick={handleQuickSubmit}
+                        disabled={isSubmitting}
+                        className="bg-green-100 text-green-700 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-green-200 transition shadow-sm border border-green-200 ml-auto"
+                     >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <CheckSquare size={16}/>} 
+                        Tất cả Tốt
+                     </button>
+                 )}
+            </div>
+
+            {/* --- SECTION 1: IDENTITY & CONTEXT --- */}
+            <Card className={`${theme.primaryLightBg} border ${theme.primaryBorder}`}>
+                <div className="flex justify-between items-center mb-3">
+                     <h3 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
+                        <ClipboardCheck className={theme.primaryText} /> Checklist Giao Nhận
+                    </h3>
+                    <div className={`bg-white px-3 py-1 rounded-full shadow-sm border ${theme.primaryBorder} text-sm font-bold ${theme.primaryText} flex items-center gap-2`}>
+                         <Clock size={14}/> Ca: {currentShift}
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Equipment Type */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Loại thiết bị</label>
+                        <div className="relative">
+                            <select 
+                                className={`w-full p-2.5 pl-9 border border-gray-300 rounded-xl appearance-none bg-white outline-none font-medium ${theme.primaryRing}`}
+                                value={selectedType}
+                                onChange={(e) => setSelectedType(e.target.value)}
+                            >
+                                {EQUIPMENT_TYPES.filter(t => checklistMode === 'checklist' || OIL_EQUIPMENT_TYPES.includes(t.id)).map(t => (
+                                    <option key={t.id} value={t.id}>{t.label}</option>
+                                ))}
+                            </select>
+                            <div className="absolute left-3 top-3 pointer-events-none">{EQUIPMENT_TYPES.find(t=>t.id===selectedType)?.icon}</div>
+                            <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16}/>
+                        </div>
+                    </div>
+
+                    {/* Equipment ID & Smart History */}
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mã thiết bị</label>
+                        <div className="relative">
+                            {/* LOGIC RENDER MỚI: SELECT HOẶC INPUT */}
+                            {VALID_EQUIPMENT_LIST[selectedType] ? (
+                                <>
+                                    <select
+                                        className={`w-full p-2.5 pl-9 border border-gray-300 rounded-xl appearance-none bg-white outline-none font-bold text-gray-800 ${theme.primaryRing}`}
+                                        value={selectedId === '' || !VALID_EQUIPMENT_LIST[selectedType].includes(selectedId) && selectedId !== '' ? '__OTHER__' : selectedId}
+                                        onChange={(e) => {
+                                            if (e.target.value === '__OTHER__') {
+                                                setSelectedId('');
+                                            } else {
+                                                setSelectedId(e.target.value);
+                                            }
+                                        }}
+                                    >
+                                        {VALID_EQUIPMENT_LIST[selectedType].map(id => (
+                                            <option key={id} value={id}>{id === '__OTHER__' ? '✏️ Thiết bị khác (tự điền)' : id}</option>
+                                        ))}
+                                    </select>
+                                    {/* Icon Search giả lập để giữ layout */}
+                                    <Search className="absolute left-3 top-3 text-gray-400 pointer-events-none" size={16}/>
+                                    <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16}/>
+                                    {/* Nếu chọn Thiết bị khác thì hiện ô nhập thêm */}
+                                    {selectedId === '' && selectedType === 'Pickup' && (
+                                        <input
+                                            type="text"
+                                            className={`w-full mt-2 p-2.5 border border-orange-300 rounded-xl uppercase font-bold text-gray-800 placeholder-gray-300 outline-none ${theme.primaryRing}`}
+                                            placeholder="Nhập tên thiết bị..."
+                                            onChange={(e) => setSelectedId(e.target.value.toUpperCase())}
+                                        />
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <input 
+                                        type="text" 
+                                        className={`w-full p-2.5 pl-9 border border-gray-300 rounded-xl uppercase font-bold text-gray-800 placeholder-gray-300 outline-none ${theme.primaryRing}`} 
+                                        placeholder="VD: CHECKER-01"
+                                        value={selectedId}
+                                        onChange={handleIdChange}
+                                    />
+                                    <Search className="absolute left-3 top-3 text-gray-400" size={16}/>
+                                </>
+                            )}
+                            
+                            {/* SMART HISTORY WIDGET */}
+                            {previousHistory && (
+                                <div className={`absolute top-full left-0 w-full mt-2 z-10 rounded-lg p-3 shadow-lg border text-xs animate-slideUp ${previousHistory.status === 'Tốt' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-yellow-50 border-yellow-200 text-yellow-800'}`}>
+                                    <div className="flex items-start gap-2">
+                                        {previousHistory.status === 'Tốt' ? <CheckCircle2 size={16} className="text-green-600 mt-0.5"/> : <AlertTriangle size={16} className="text-yellow-600 mt-0.5"/>}
+                                        <div>
+                                            <span className="font-bold block">Ca trước báo: {previousHistory.status}</span>
+                                            <span className="block mt-0.5">{previousHistory.note || 'Thiết bị hoạt động ổn định'}</span>
+                                            <span className="block mt-1 opacity-75 text-[10px]">Ghi bởi: {previousHistory.reporter}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            {/* --- SECTION 2: FUEL ONLY (Đã bỏ Số giờ / KM) --- */}
+            {selectedType !== 'DWC' && selectedType !== 'QC' && checklistMode === 'checklist' && (
+                <div className="bg-white p-3 rounded-xl border shadow-sm">
+                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+                        <Fuel size={14}/> Nhiên liệu (%)
+                    </label>
+                    <div className="flex items-center gap-2">
+                        <input 
+                            type="number" 
+                            min="0" max="100"
+                            className={`w-full p-2 bg-gray-50 rounded-lg font-mono text-gray-800 outline-none ${theme.primaryRing}`}
+                            placeholder="100"
+                            value={fuelLevel}
+                            onChange={(e) => setFuelLevel(e.target.value)}
+                        />
+                        {fuelLevel && (
+                            <div className={`w-3 h-8 rounded transition-colors duration-300 ${
+                                parseInt(fuelLevel) < 35 ? 'bg-red-500' : 
+                                parseInt(fuelLevel) < 50 ? 'bg-orange-500' : 'bg-green-500'
+                            }`}></div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* --- SECTION 3: FUEL ONLY PANEL (khi chọn Cập nhật Đổ dầu) --- */}
+            {checklistMode === 'fuel_update' && OIL_EQUIPMENT_TYPES.includes(selectedType) && (
+                <div className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                            <Fuel size={24} className="text-orange-600"/>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-orange-800 text-lg">Cập nhật Đổ dầu nhanh</h3>
+                            <p className="text-xs text-orange-600 font-medium">{selectedId} • Ca {currentShift}</p>
+                        </div>
+                    </div>
+                    <div className="mb-4">
+                        <label className="text-xs font-bold text-orange-700 uppercase mb-2 block">Mức nhiên liệu sau khi đổ (%)</label>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="number"
+                                min="0" max="100"
+                                className="flex-1 p-4 text-2xl font-black text-center border-2 border-orange-300 rounded-xl focus:border-orange-500 outline-none bg-white"
+                                placeholder="100"
+                                value={fuelLevel}
+                                onChange={(e) => setFuelLevel(e.target.value)}
+                            />
+                            <span className="text-2xl font-black text-orange-700">%</span>
+                        </div>
+                        {fuelLevel && (
+                            <div className="mt-3">
+                                <div className="w-full bg-orange-100 rounded-full h-4 overflow-hidden border border-orange-200">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${parseInt(fuelLevel) < 35 ? 'bg-red-500' : parseInt(fuelLevel) < 50 ? 'bg-orange-500' : 'bg-green-500'}`}
+                                        style={{width: `${Math.min(parseInt(fuelLevel)||0, 100)}%`}}
+                                    ></div>
+                                </div>
+                                <p className={`text-xs font-bold mt-1 text-center ${parseInt(fuelLevel) < 35 ? 'text-red-600' : parseInt(fuelLevel) < 50 ? 'text-orange-600' : 'text-green-600'}`}>
+                                    {parseInt(fuelLevel) < 35 ? '⚠️ Thấp - Cần tiếp liệu sớm' : parseInt(fuelLevel) < 50 ? '🟡 Trung bình' : '✅ Đầy / Đủ dùng'}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={handleFuelUpdate}
+                        disabled={isSubmitting}
+                        className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-black text-lg flex items-center justify-center gap-2 shadow-lg transition"
+                    >
+                        {isSubmitting ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>}
+                        Gửi Cập nhật Nhiên liệu
+                    </button>
+                </div>
+            )}
+
+            {/* --- SECTION 3: DYNAMIC CHECKLIST FORM --- */}
+            {checklistMode === 'checklist' && <div className="space-y-3 pb-20">
+                {/* STATUS LEGEND */}
+                <div className="flex flex-wrap gap-4 text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 mb-3">
+                   <span className="font-bold mr-1">Chú giải:</span>
+                   <span className="flex items-center gap-1"><CheckCircle2 size={14} className="text-green-600"/> Tốt/Bình thường</span>
+                   <span className="flex items-center gap-1"><AlertTriangle size={14} className="text-yellow-600"/> Cần theo dõi (Vẫn hoạt động)</span>
+                   <span className="flex items-center gap-1"><XCircle size={14} className="text-red-600"/> Hư hỏng/Dừng máy (Critical)</span>
+                </div>
+
+                {currentSchema?.map((group, groupIndex) => (
+                    <div key={groupIndex} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        {/* Group Header (Accordion) */}
+                        <div 
+                            className="bg-gray-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition"
+                            onClick={() => toggleGroup(groupIndex)}
+                        >
+                            <h4 className="font-bold text-gray-700 text-sm uppercase tracking-wide">{group.group}</h4>
+                            <ChevronDown 
+                                size={16} 
+                                className={`text-gray-400 transition-transform duration-200 ${expandedGroups[groupIndex] ? 'rotate-180' : ''}`}
+                            />
+                        </div>
+
+                        {/* Group Items */}
+                        {expandedGroups[groupIndex] && (
+                            <div className="divide-y divide-gray-100">
+                                {group.items.map((item) => {
+                                    const itemData = checklistData[item.id] || {};
+                                    const status = itemData.status; // undefined, 'OK', 'WARNING', 'CRITICAL'
+
+                                    // SPECIAL: Numeric input items (e.g. qc_spr_id)
+                                    if (item.inputType === 'number') {
+                                        return (
+                                            <div key={item.id} className="p-4 transition hover:bg-gray-50">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    {item.critical && <AlertOctagon size={14} className="text-red-500"/>}
+                                                    <span className="text-sm font-medium text-gray-800">{item.label}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="number"
+                                                        min={item.inputMin || 1}
+                                                        max={item.inputMax || 10}
+                                                        className={`w-24 p-2.5 border-2 rounded-xl font-black text-center text-xl text-indigo-700 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 ${theme.primaryRing}`}
+                                                        placeholder="--"
+                                                        value={itemData.numValue || ''}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            const min = item.inputMin || 1;
+                                                            const max = item.inputMax || 10;
+                                                            if (!e.target.value) {
+                                                                setChecklistData(prev => ({...prev, [item.id]: {...prev[item.id], numValue: '', status: undefined}}));
+                                                            } else if (!isNaN(val) && val >= min && val <= max) {
+                                                                setChecklistData(prev => ({...prev, [item.id]: {...prev[item.id], numValue: val, status: 'OK', note: `Ngáng số ${val}`}}));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="text-xs text-gray-500 font-medium">Nhập số từ {item.inputMin || 1} đến {item.inputMax || 10}</span>
+                                                    {itemData.numValue && <span className="ml-auto text-xs font-bold text-green-600 flex items-center gap-1"><CheckCircle2 size={14}/> Đã nhập: Ngáng số {itemData.numValue}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div key={item.id} className="p-4 transition hover:bg-gray-50">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    {item.critical && <AlertOctagon size={14} className="text-red-500" title="Hạng mục quan trọng"/>}
+                                                    <span className={`text-sm font-medium ${item.critical ? 'text-gray-900' : 'text-gray-700'}`}>
+                                                        {item.label}
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* STATUS BUTTONS */}
+                                                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                                                    <button 
+                                                        onClick={() => handleStatusChange(item.id, 'OK')}
+                                                        className={`p-2 rounded-md transition ${status === 'OK' ? 'bg-green-500 text-white shadow-md' : 'text-gray-400 hover:text-green-600'}`}
+                                                    >
+                                                        <CheckCircle2 size={20} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleStatusChange(item.id, 'WARNING')}
+                                                        className={`p-2 rounded-md transition ${status === 'WARNING' ? 'bg-yellow-400 text-yellow-900 shadow-md' : 'text-gray-400 hover:text-yellow-500'}`}
+                                                    >
+                                                        <AlertTriangle size={20} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleStatusChange(item.id, 'CRITICAL')}
+                                                        className={`p-2 rounded-md transition ${status === 'CRITICAL' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-red-500'}`}
+                                                    >
+                                                        <XCircle size={20} />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* CONDITIONAL INPUT FOR ISSUES (UPDATED UI - NHIỆM VỤ 2) */}
+                                            {(status === 'WARNING' || status === 'CRITICAL') && (
+                                                <div className="mt-3 animate-fadeIn bg-red-50 p-3 rounded-lg border border-red-100">
+                                                    <textarea 
+                                                        className="w-full p-2 text-sm border border-red-200 rounded-lg focus:ring-2 focus:ring-red-400 outline-none bg-white mb-2"
+                                                        placeholder={`Mô tả chi tiết lỗi ${status === 'CRITICAL' ? 'nghiêm trọng' : 'nhẹ'}... (Bắt buộc)`}
+                                                        rows={2}
+                                                        value={itemData.note || ''}
+                                                        onChange={(e) => handleNoteChange(item.id, e.target.value)}
+                                                    />
+                                                    
+                                                    {/* IMAGE UPLOAD UI */}
+                                                    {itemData.image ? (
+                                                        <div className="relative w-fit mt-2">
+                                                            <ImagePreview 
+                                                                src={itemData.image} 
+                                                                alt="Evidence" 
+                                                                className="h-24 w-auto rounded-lg border border-gray-300 shadow-sm object-cover"
+                                                            />
+                                                            <button 
+                                                                onClick={() => handleRemoveImage(item.id)}
+                                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
+                                                                title="Xóa ảnh"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="flex items-center gap-2 text-xs font-bold text-gray-600 bg-white px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 w-full justify-center cursor-pointer transition active:scale-95 shadow-sm">
+                                                            <Camera size={16} className={theme.primaryText}/> 
+                                                            <span>Chụp / Chọn ảnh</span>
+                                                            <input 
+                                                                type="file" 
+                                                                accept="image/*" 
+                                                                className="hidden" 
+                                                                onChange={(e) => handleImageUpload(item.id, e)}
+                                                            />
+                                                        </label>
+                                                    )}
+
+                                                    {/* NEW: CHECKBOX MẤT AN TOÀN */}
+                                                    <label className="flex items-center gap-2 mt-3 text-sm text-red-700 font-bold bg-white px-3 py-2 rounded-lg border border-red-200 cursor-pointer w-fit hover:bg-red-50 transition shadow-sm active:scale-95">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
+                                                            checked={itemData.isUnsafe || false}
+                                                            onChange={() => handleUnsafeToggle(item.id)}
+                                                        />
+                                                        <ShieldAlert size={16} className="text-red-500"/>
+                                                        Báo cáo đây là nguy cơ MẤT AN TOÀN
+                                                    </label>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+            } {/* END checklistMode === 'checklist' */}
+            
+            {/* SUBMIT BUTTON - chỉ hiện khi ở chế độ checklist */}
+            {checklistMode === 'checklist' && (
+             <div className="sticky bottom-4 left-0 right-0">
+                <button 
+                    onClick={handleNormalSubmit}
+                    disabled={isSubmitting}
+                    className={`w-full ${theme.primaryBg} text-white py-3 rounded-xl font-bold shadow-lg ${theme.primaryHover} transition flex items-center justify-center gap-2`}
+                >
+                    {isSubmitting ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Gửi Checklist
+                </button>
+             </div>
+            )}
+
+             {/* ⛔ STOP WORK MODAL */}
+             <Modal isOpen={showStopWorkModal} onClose={() => setShowStopWorkModal(false)} title="⛔ CẢNH BÁO AN TOÀN">
+                 <div className="text-center py-4">
+                    <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 mb-4 animate-pulse">
+                        <AlertOctagon size={48} />
+                    </div>
+                    <h2 className="font-extrabold text-2xl text-red-700 mb-2 uppercase">Stop Work!</h2>
+                    <p className="text-gray-800 font-bold mb-4">
+                        Phát hiện hạng mục KHÔNG ĐẠT (Critical).<br/>
+                        Yêu cầu dừng thiết bị ngay lập tức!
+                    </p>
+                    <p className="text-sm text-gray-500 mb-6 bg-red-50 p-3 rounded-lg border border-red-100">
+                        Hệ thống sẽ tự động gửi thông báo khẩn cấp đến Kỹ thuật và Trực ban Khai thác.
+                    </p>
+                    
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={() => saveData(true)}
+                            className="w-full py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-red-700"
+                        >
+                            <ShieldAlert size={18}/> Xác nhận & Báo cáo sự cố
+                        </button>
+                        <button 
+                            onClick={() => setShowStopWorkModal(false)} 
+                            className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium"
+                        >
+                            Quay lại kiểm tra
+                        </button>
+                    </div>
+                 </div>
+             </Modal>
+        </div>
+    );
+};
+
+
+// ==========================================
+// 6. PERSONAL WORKSPACE (UPDATED)
+// ==========================================
+
+const PersonalWorkspace = ({ 
+  currentUser, 
+  employees, // THÊM PROPS
+  attendance, 
+  records,
+  checklists = [], 
+  safetyReports = [], 
+  ideas = [], 
+  news = [], 
+  topPerformers = [], // NEW: Nhận danh sách Top NV từ App component
+  showToast 
+}) => {
+  const theme = getThemeColors(currentUser?.group, currentUser?.code);
+  
+  // Xác định xem user có phải Quản lý/Admin không
+  const isManager = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(currentUser?.group) || currentUser?.id === 'SUPER_ADMIN';
+
+  const [activeTab, setActiveTab] = useState('news');
+  // CẬP NHẬT: Thêm trường image vào formData
+  const [formData, setFormData] = useState({ content: '', severity: 'Medium', impact: 'Medium', image: null });
+
+  // THÊM MỚI: State và Logic liên kết chéo Thiết bị cho nhân viên
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState(null);
+  const equipmentSummaryList = useMemo(() => {
+      const summary = {};
+      checklists.forEach(log => {
+          const id = log.equipmentId;
+          if (!summary[id]) {
+              summary[id] = { id: id, type: log.type, logs: [] };
+          }
+          summary[id].logs.push(log);
+      });
+      Object.values(summary).forEach(item => item.logs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      return Object.values(summary);
+  }, [checklists]);
+  
+  // STATE MỚI: DÀNH CHO BÁO CÁO NÂNG CAO CỦA QUẢN LÝ (CẬP NHẬT LOGIC CHUYÊN SÂU & THỦ CÔNG)
+  const [managerReport, setManagerReport] = useState({
+      reportType: 'Leader Led Safety Gemba',
+      reportShift: '',
+      reportDate: getCurrentDate(),
+      whereChips: [],
+      whoChips: [],
+      whereCustom: '', // CẬP NHẬT: Lưu giá trị nhập thủ công
+      whoCustom: '',   // CẬP NHẬT: Lưu giá trị nhập thủ công
+      isSafetyRisk: false, // CẬP NHẬT: Đánh dấu có nguy cơ an toàn (Dành cho GEMBA)
+      content: '',
+      images: [] // Array of { src: base64, caption: string }
+  });
+
+  const [showWhereCustom, setShowWhereCustom] = useState(false);
+  const [showWhoCustom, setShowWhoCustom] = useState(false);
+
+  // HẰNG SỐ CHO QUICK SELECT CHIPS
+  const WHERE_OPTIONS = ['Cầu cảng', 'Trên tàu', 'Bãi container', 'Gate', 'Khu kỹ thuật', 'Văn phòng'];
+  const WHO_OPTIONS = ['Nhân viên CMIT', 'Nhà thầu ngoài', 'Công nhân VNL', 'Nhân viên ADHOC', 'Tài xế bên ngoài'];
+
+  // CÁC HÀM HELPER LOGIC NGHIỆP VỤ BÁO CÁO
+  const isGembaOrAssessment = (type) => ['Leader Led Safety Gemba', 'Critical Control Assessment ( CCA)', 'SQDC', 'Other Gemba'].includes(type);
+
+  const getImageLimit = (type) => {
+      if (isGembaOrAssessment(type)) return 10;
+      return 4; // Pre-shift toolbox talk, Leader Led Activities
+  };
+  
+  const isCaptionRequired = (type) => isGembaOrAssessment(type);
+  const hasQuickChips = (type) => isGembaOrAssessment(type);
+
+  // AUTO-FILL LOGIC: Dò tìm điểm danh hôm nay
+  useEffect(() => {
+      if (isManager) {
+          const today = getCurrentDate();
+          const myTodayLog = attendance.find(a => a.employeeId === currentUser.id && a.date === today);
+          
+          if (myTodayLog) {
+              setManagerReport(prev => ({ 
+                  ...prev, 
+                  reportShift: myTodayLog.shift, 
+                  reportDate: myTodayLog.date 
+              }));
+          }
+      }
+  }, [attendance, currentUser.id, isManager]);
+
+  const [showRedoConfirm, setShowRedoConfirm] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(false);
+
+  // --- NEW: RECALL STATE (NHIỆM VỤ 1) ---
+  const [recallItem, setRecallItem] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // --- NEW: CHANGE PASSWORD STATE ---
+  const [showChangePassModal, setShowChangePassModal] = useState(false);
+  const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
+
+  // --- NEW: ACTIVITY FEED / COMMENT STATES ---
+  const [commentText, setCommentText] = useState({});
+  const [selectedFeedItem, setSelectedFeedItem] = useState(null);
+
+  const handlePostComment = async (item, text) => {
+      if (!text || !text.trim()) return;
+      // FIX: Phân biệt collection chính xác hơn - dùng nhiều trường để xác định
+      // Manager reports có reportType nhưng KHÔNG có severity. Employee reports có severity.
+      // Cả hai đều lưu vào safety_reports. Ideas KHÔNG có severity hoặc reportType an toàn.
+      const isSafetyReport = item.severity !== undefined || item.reportType !== undefined || item.isSafetyRisk === true;
+      const collectionName = isSafetyReport ? 'safety_reports' : 'ideas';
+      const newComment = {
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          content: text.trim(),
+          timestamp: Date.now()
+      };
+      try {
+          await updateDoc(getDocRef(collectionName, item.id), {
+              comments: arrayUnion(newComment)
+          });
+          setCommentText(prev => ({ ...prev, [item.id]: '' }));
+          showToast("Đã gửi bình luận!");
+      } catch (e) {
+          console.error("Comment Error:", e);
+          showToast("Lỗi gửi bình luận!", "error");
+      }
+  };
+
+  // --- TRỢ LÝ WIZARD 5W1H STATE ---
+  const [wizardConfig, setWizardConfig] = useState({ isOpen: false, type: null, step: 0 });
+  const [wizardAnswers, setWizardAnswers] = useState(Array(6).fill(''));
+
+  // CẬP NHẬT: Tối ưu 5W cho An toàn và 5W1H cho Sáng kiến
+  const WIZARD_QUESTIONS = {
+      safety: [
+          { title: 'WHAT - Có việc gì xảy ra?', desc: 'Mô tả ngắn gọn sự cố hoặc mối nguy.' },
+          { title: 'WHERE - Ở đâu?', desc: 'Khu vực cụ thể (VD: Bãi RTG 01, Cầu tàu...)' },
+          { title: 'WHEN - Khi nào?', desc: 'Thời gian, Ca làm việc phát hiện.' },
+          { title: 'WHO - Ai liên quan?', desc: 'Cá nhân/Thiết bị nào liên quan hoặc chứng kiến?' },
+          { title: 'WHY - Tại sao cần báo cáo?', desc: 'Nêu rõ nguy cơ mất an toàn hoặc rủi ro tiềm ẩn nếu không xử lý.' }
+          // Bỏ chữ HOW (Như thế nào) vì báo cáo sự cố đôi khi chưa có ngay giải pháp
+      ],
+      idea: [
+          { title: 'WHAT - Ý tưởng gì?', desc: 'Tóm tắt nội dung bạn muốn cải tiến.' },
+          { title: 'WHERE - Áp dụng ở đâu?', desc: 'Khu vực hoặc Quy trình nào cần thay đổi?' },
+          { title: 'WHEN - Khi nào thực hiện?', desc: 'Thời điểm thích hợp để bắt đầu.' },
+          { title: 'WHO - Ai phối hợp?', desc: 'Bộ phận nào sẽ tham gia hoặc được hưởng lợi?' },
+          { title: 'WHY - Tại sao cần làm?', desc: 'Lợi ích mang lại (Tiết kiệm thời gian, an toàn...).' },
+          { title: 'HOW - Làm như thế nào?', desc: 'Đề xuất các bước thực hiện cụ thể (Giải pháp).' }
+      ]
+  };
+
+  const openWizard = (type) => {
+      setWizardConfig({ isOpen: true, type, step: 0 });
+      setWizardAnswers(Array(6).fill(''));
+  };
+
+  const closeWizard = () => {
+      setWizardConfig({ isOpen: false, type: null, step: 0 });
+  };
+
+  const nextWizardStep = () => {
+      // Logic xác định số bước tối đa: Safety có 5 bước (index 4), Idea có 6 bước (index 5)
+      const maxSteps = wizardConfig.type === 'safety' ? 4 : 5;
+
+      if (wizardConfig.step < maxSteps) {
+          setWizardConfig(prev => ({ ...prev, step: prev.step + 1 }));
+      } else {
+          // Hoàn thành -> Gộp chuỗi
+          const labelsSafety = ['Sự việc (What)', 'Địa điểm (Where)', 'Thời gian (When)', 'Liên quan (Who)', 'Nguy cơ (Why)'];
+          const labelsIdea = ['Sự việc (What)', 'Địa điểm (Where)', 'Thời gian (When)', 'Liên quan (Who)', 'Lợi ích (Why)', 'Cách làm (How)'];
+          
+          const labels = wizardConfig.type === 'safety' ? labelsSafety : labelsIdea;
+          const title = wizardConfig.type === 'safety' ? '[BÁO CÁO 5W]' : '[SÁNG KIẾN 5W1H]';
+          
+          let result = `${title}\n`;
+          wizardAnswers.slice(0, maxSteps + 1).forEach((ans, idx) => {
+              if(ans.trim()) result += `- ${labels[idx]}: ${ans.trim()}\n`;
+          });
+          
+          setFormData(prev => ({ 
+              ...prev, 
+              content: prev.content ? prev.content + '\n\n' + result : result 
+          }));
+          closeWizard();
+          showToast(`Đã chèn nội dung từ Trợ lý ${wizardConfig.type === 'safety' ? '5W' : '5W1H'}!`);
+      }
+  };
+
+  const prevWizardStep = () => {
+      if (wizardConfig.step > 0) {
+          setWizardConfig(prev => ({ ...prev, step: prev.step - 1 }));
+      }
+  };
+
+  const handleWizardInput = (val) => {
+      const newAns = [...wizardAnswers];
+      newAns[wizardConfig.step] = val;
+      setWizardAnswers(newAns);
+  };
+
+  // --- NEW: HANDLE RECALL REPORT (NHIỆM VỤ 2) ---
+  const handleRecallReport = async () => {
+      if (!recallItem) return;
+      setLoadingAction(true);
+      try {
+          // recallItem cần có thuộc tính collectionName được gán khi click nút xóa
+          const collectionName = recallItem.collectionName; 
+          
+          if (!collectionName) throw new Error("Không xác định được loại dữ liệu");
+
+          // 1. Xóa document
+          await deleteDoc(getDocRef(collectionName, recallItem.id));
+          
+          // 2. Ghi Audit Log
+          await createAuditLog(
+              'RECALL', 
+              currentUser, 
+              recallItem.id, 
+              { 
+                  content: recallItem.content,
+                  originalContent: recallItem, // ADDED: Lưu toàn bộ nội dung gốc để đối soát sau này
+                  type: collectionName,
+                  reason: 'User self-recall'
+              }
+          );
+          
+          showToast("Đã rút lại báo cáo và lưu vết vào hệ thống kiểm toán");
+          setRecallItem(null);
+          setShowAuthModal(false);
+      } catch (e) {
+          console.error("Recall Error:", e);
+          showToast("Lỗi khi rút báo cáo!", "error");
+      } finally {
+          setLoadingAction(false);
+      }
+  };
+
+  // --- NEW: HANDLE CHANGE PASSWORD ---
+  const handleChangePassword = async () => {
+      // 1. Validation cơ bản
+      if (!passForm.current || !passForm.new || !passForm.confirm) {
+          return showToast("Vui lòng điền đầy đủ thông tin!", "error");
+      }
+      if (passForm.new !== passForm.confirm) {
+          return showToast("Mật khẩu mới không khớp!", "error");
+      }
+      if (passForm.new.length < 6) {
+          return showToast("Mật khẩu mới phải từ 6 ký tự!", "error");
+      }
+      
+      // 2. Kiểm tra mật khẩu cũ (So sánh với Firestore lưu trữ hoặc currentUser nếu có)
+      // Lưu ý: currentUser.password lấy từ Firestore (do App lưu text). 
+      // Đây là cách kiểm tra nhanh nhất với cấu trúc hiện tại.
+      if (currentUser.password && passForm.current !== currentUser.password) {
+          return showToast("Mật khẩu hiện tại không đúng!", "error");
+      }
+
+      setLoadingAction(true);
+      try {
+          // auth đã import từ config/firebase
+          const user = auth.currentUser;
+
+          if (user) {
+              // BƯỚC 1: Cập nhật trên Firebase Auth (Quan trọng để Login lần sau)
+              await updatePassword(user, passForm.new);
+              
+              // BƯỚC 2: Cập nhật ngược lại vào Firestore (Để đồng bộ dữ liệu hiển thị/quản lý)
+              await updateDoc(getDocRef('employees', currentUser.id), {
+                  password: passForm.new,
+                  isFirstLogin: false // Đảm bảo cờ này tắt
+              });
+
+              showToast("Đổi mật khẩu thành công!");
+              setShowChangePassModal(false);
+              setPassForm({ current: '', new: '', confirm: '' });
+          } else {
+              showToast("Lỗi phiên đăng nhập. Vui lòng đăng nhập lại!", "error");
+          }
+      } catch (error) {
+          console.error("Change Pass Error:", error);
+          if (error.code === 'auth/requires-recent-login') {
+              showToast("Phiên làm việc hết hạn. Vui lòng đăng xuất và đăng nhập lại để đổi mật khẩu!", "error");
+          } else {
+              showToast("Lỗi đổi mật khẩu: " + error.message, "error");
+          }
+      } finally {
+          setLoadingAction(false);
+      }
+  };
+
+  // Profile Edit State
+  const [editProfile, setEditProfile] = useState({
+    phone: currentUser.phone || '',
+    email: currentUser.email || '',
+    address: currentUser.address || '',
+    dob: currentUser.dob || '',
+    emergencyName: currentUser.emergencyName || '',
+    emergencyPhone: currentUser.emergencyPhone || '',
+    routeLine: currentUser.routeLine || '',       // CẬP NHẬT: Tách tuyến đường
+    commuteMethod: currentUser.commuteMethod || '' // CẬP NHẬT: Tách phương tiện
+  });
+  const [avatarPreview, setAvatarPreview] = useState(currentUser.avatar || null);
+
+  // --- 2. TÍNH TOÁN KPI CHECKLIST (TRONG NĂM NAY) ---
+  const currentYear = new Date().getFullYear();
+  
+  // Lọc checklist của năm hiện tại
+  const thisYearChecklists = useMemo(() => {
+    return checklists.filter(c => {
+        // ĐIỀU KIỆN 1: Phải là checklist của chính mình (Quan trọng khi Admin xem Dashboard)
+        if (c.reporterId !== currentUser.id) return false;
+
+        // ĐIỀU KIỆN 2: Kiểm tra Năm (Logic đa tầng để không bỏ sót)
+        let recordYear = 0;
+
+        // Cách 1: Parse từ chuỗi ngày (date string)
+        if (c.date) {
+            const dateStr = String(c.date);
+            // Tìm chuỗi 4 số liên tiếp (VD: 2026)
+            const yearMatch = dateStr.match(/\b\d{4}\b/);
+            if (yearMatch) {
+                recordYear = parseInt(yearMatch[0]);
+            } else {
+                // Nếu không thấy 4 số, thử tách chuỗi để tìm năm 2 số (VD: 29/01/26)
+                const separator = dateStr.includes('/') ? '/' : '-';
+                const parts = dateStr.split(separator);
+                if (parts.length >= 3) {
+                     let y = parts[parts.length - 1].trim(); // Lấy phần tử cuối
+                     // Nếu năm ở đầu (YYYY-MM-DD) mà regex trên trượt (hiếm), fallback ở đây
+                     if (parts[0].trim().length === 2 && !isNaN(parts[0])) y = parts[0]; 
+
+                     if (y.length === 2 && !isNaN(y)) recordYear = parseInt('20' + y);
+                }
+            }
+        }
+
+        // Cách 2 (DỰ PHÒNG CUỐI CÙNG): Nếu chuỗi ngày lỗi, dùng timestamp hệ thống
+        if (!recordYear && c.timestamp) {
+            recordYear = new Date(c.timestamp).getFullYear();
+        }
+
+        return recordYear === currentYear;
+    });
+  }, [checklists, currentYear, currentUser.id]);
+
+  // Tính các chỉ số
+  const totalChecklists = thisYearChecklists.length;
+
+  // Đếm số checklist có vấn đề (Root CRITICAL hoặc Item con có WARNING/CRITICAL)
+  const issueCount = useMemo(() => {
+    return thisYearChecklists.filter(c => {
+        // Case 1: Trạng thái tổng là Critical
+        if (c.status === 'CRITICAL') return true;
+        // Case 2: Có hạng mục con bị Warning hoặc Critical
+        if (c.data) {
+             return Object.values(c.data).some(item => item.status === 'WARNING' || item.status === 'CRITICAL');
+        }
+        return false;
+    }).length;
+  }, [thisYearChecklists]);
+
+  const safeCount = totalChecklists - issueCount;
+  
+  // Lấy 5 Checklist gần nhất để hiển thị
+  const recentChecklists = thisYearChecklists.slice(0, 5);
+
+  useEffect(() => {
+    setEditProfile({
+      phone: currentUser.phone || '',
+      email: currentUser.email || '',
+      address: currentUser.address || '',
+      dob: currentUser.dob || '',
+      emergencyName: currentUser.emergencyName || '',
+      emergencyPhone: currentUser.emergencyPhone || '',
+      routeLine: currentUser.routeLine || '',
+      commuteMethod: currentUser.commuteMethod || ''
+    });
+    setAvatarPreview(currentUser.avatar || null);
+  }, [currentUser]);
+
+  const todayLog = attendance.find(a => a.employeeId === currentUser.id && a.date === getCurrentDate());
+  
+  // Show records targeted at this user (AND NOT DELETED)
+  const myRecords = records.filter(r => r.targetId === currentUser.id && !r.isDeleted);
+
+  const getSmartShiftSuggestion = () => {
+    const now = new Date();
+    const timeValue = now.getHours() + now.getMinutes() / 60; 
+    // CẬP NHẬT: D1 từ 07:30 (7.5) đến 19:30 (19.5)
+    return (timeValue >= 7.5 && timeValue < 19.5) ? 'D1' : 'D2';
+  };
+  const suggestedShift = getSmartShiftSuggestion();
+
+  // --- ACTIONS ---
+  const handleCheckIn = async (shift) => {
+    if (todayLog) return showToast("Bạn đã điểm danh hôm nay rồi!", "error");
+    setLoadingAction(true);
+    try {
+      await addDoc(getCollection('attendance'), {
+        employeeId: currentUser.id,
+        name: currentUser.name,
+        shift,
+        time: getCurrentTime(),
+        date: getCurrentDate(),
+        timestamp: Date.now()
+      });
+      showToast(`Đã điểm danh Ca ${shift} thành công!`);
+    } catch (e) {
+      showToast("Lỗi kết nối!", "error");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const confirmRedoCheckIn = async () => {
+    if (!todayLog) return;
+    setLoadingAction(true);
+    try {
+      await deleteDoc(getDocRef('attendance', todayLog.id));
+      setShowRedoConfirm(false);
+      showToast("Đã hủy điểm danh cũ. Vui lòng chọn lại!");
+    } catch (e) {
+      showToast("Không thể hủy điểm danh!", "error");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+
+
+
+
+  // CẬP NHẬT: Hàm xử lý upload ảnh chung cho Báo cáo / Sáng kiến (Nhân viên)
+  const handleReportImageUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+          showToast("Vui lòng chỉ chọn file ảnh!", "error");
+          return;
+      }
+      try {
+          const resizedImage = await resizeImage(file); // Dùng mặc định 800x800
+          setFormData(prev => ({ ...prev, image: resizedImage }));
+          showToast("Đã tải ảnh lên thành công!");
+      } catch (error) {
+          showToast("Lỗi xử lý ảnh!", "error");
+      }
+  };
+
+  // THÊM MỚI: XỬ LÝ UPLOAD NHIỀU ẢNH CHO QUẢN LÝ
+  const handleManagerMultiImageUpload = async (e) => {
+      const files = Array.from(e.target.files);
+      if (!files.length) return;
+      
+      const limit = getImageLimit(managerReport.reportType);
+      
+      // Giới hạn ảnh theo quy định của từng loại báo cáo
+      if (managerReport.images.length + files.length > limit) {
+          return showToast(`Chỉ được tải lên tối đa ${limit} ảnh cho loại báo cáo này!`, "warning");
+      }
+
+      setLoadingAction(true);
+      try {
+          // Resize nhỏ hơn chút (600x600) để tiết kiệm dung lượng khi lưu mảng
+          const newImages = await Promise.all(files.map(f => resizeImage(f, 600, 600)));
+          setManagerReport(prev => ({
+              ...prev,
+              images: [...prev.images, ...newImages.map(src => ({ src, caption: '' }))]
+          }));
+          showToast(`Đã tải lên ${files.length} ảnh!`);
+      } catch (error) {
+          showToast("Lỗi xử lý ảnh!", "error");
+      } finally {
+          setLoadingAction(false);
+      }
+  };
+
+  const removeManagerImage = (index) => {
+      setManagerReport(prev => {
+          const newImages = [...prev.images];
+          newImages.splice(index, 1);
+          return { ...prev, images: newImages };
+      });
+  };
+
+  const updateManagerImageCaption = (index, text) => {
+      setManagerReport(prev => {
+          const newImages = [...prev.images];
+          newImages[index].caption = text;
+          return { ...prev, images: newImages };
+      });
+  };
+
+  // Toggle Hàm Cho Quick Chips
+  const toggleManagerChip = (field, value) => {
+      setManagerReport(prev => {
+          const currentList = prev[field];
+          if (currentList.includes(value)) {
+              return { ...prev, [field]: currentList.filter(item => item !== value) };
+          } else {
+              return { ...prev, [field]: [...currentList, value] };
+          }
+      });
+  };
+
+  // CẬP NHẬT: HÀM GENERATE NỘI DUNG EMAIL CHUẨN ĐỂ COPY & LƯU DB
+  const buildEmailContent = () => {
+      let whereAll = [...managerReport.whereChips];
+      if (managerReport.whereCustom.trim()) whereAll.push(managerReport.whereCustom.trim());
+
+      let whoAll = [...managerReport.whoChips];
+      if (managerReport.whoCustom.trim()) whoAll.push(managerReport.whoCustom.trim());
+
+      let emailText = `Kính gửi Ban Quản lý,\n\n`;
+      emailText += `BÁO CÁO: ${managerReport.reportType.toUpperCase()}\n`;
+      emailText += `Thời gian: Ca ${managerReport.reportShift || '...'} - Ngày ${managerReport.reportDate}\n`;
+      emailText += `Người báo cáo: ${currentUser.name} (${currentUser.position})\n`;
+      emailText += `-------------------------------------------\n\n`;
+
+      if (hasQuickChips(managerReport.reportType)) {
+          if (whereAll.length > 0) emailText += `📍 Khu vực: ${whereAll.join(', ')}\n`;
+          if (whoAll.length > 0) emailText += `👥 Đối tượng liên quan: ${whoAll.join(', ')}\n`;
+          
+          if (['Leader Led Safety Gemba', 'Critical Control Assessment ( CCA)', 'Other Gemba'].includes(managerReport.reportType) && managerReport.isSafetyRisk) {
+              emailText += `⚠️ LƯU Ý ĐẶC BIỆT: Có phát hiện tình huống gây mất an toàn!\n`;
+          }
+          emailText += `\n`;
+      }
+
+      emailText += `NỘI DUNG CHI TIẾT:\n${managerReport.content || '(Chưa nhập nội dung)'}\n`;
+
+      if (managerReport.images.length > 0) {
+          emailText += `\n[ĐÍNH KÈM]: ${managerReport.images.length} hình ảnh đã được upload lên hệ thống HERO.\n`;
+          managerReport.images.forEach((img, idx) => {
+              if (img.caption) emailText += ` - Ảnh ${idx + 1}: ${img.caption}\n`;
+          });
+      }
+
+      emailText += `\nTrân trọng,\n${currentUser.name}`;
+      return emailText;
+  };
+
+  // CẬP NHẬT: HÀM COPY CLIPBOARD
+  const handleCopyReport = () => {
+      const textToCopy = buildEmailContent();
+      
+      // Sử dụng cách tạo textarea ẩn để tương thích tốt với các môi trường iFrame (như Canvas)
+      const textArea = document.createElement("textarea");
+      textArea.value = textToCopy;
+      // Đảm bảo textarea không làm thay đổi layout
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      
+      textArea.focus();
+      textArea.select();
+      
+      try {
+          document.execCommand('copy');
+          showToast("Đã Copy toàn bộ nội dung (Định dạng Email) vào Clipboard!");
+      } catch (err) {
+          console.error('Fallback copy failed', err);
+          showToast("Trình duyệt không hỗ trợ Copy. Vui lòng copy thủ công.", "error");
+      }
+      
+      document.body.removeChild(textArea);
+  };
+
+  // CẬP NHẬT: Hàm Submit chung xử lý rẽ nhánh NV và Quản lý
+  const submitSafety = async () => {
+    if (isManager) {
+        // LUỒNG DÀNH CHO QUẢN LÝ
+        if (!managerReport.reportShift || !managerReport.content) return showToast("Vui lòng điền đủ Ca làm việc và Nội dung!", "warning");
+        
+        // Validation: Bắt buộc điền Caption cho GEMBA & An toàn
+        if (isCaptionRequired(managerReport.reportType) && managerReport.images.length > 0) {
+            const hasEmptyCaption = managerReport.images.some(img => !img.caption || !img.caption.trim());
+            if (hasEmptyCaption) return showToast("Vui lòng nhập đầy đủ CHÚ THÍCH cho tất cả hình ảnh đính kèm!", "error");
+        }
+
+        setLoadingAction(true);
+        try {
+          // Xử lý tự động tạo Title
+          const generatedTitle = `Ca ${managerReport.reportShift} - ${managerReport.reportDate}`;
+          
+          // Gộp các giá trị từ Chips vào Nội dung (Hiển thị kiểu tối giản cho Feed)
+          let finalContent = managerReport.content;
+          if (hasQuickChips(managerReport.reportType)) {
+              let whereAll = [...managerReport.whereChips];
+              if (managerReport.whereCustom.trim()) whereAll.push(managerReport.whereCustom.trim());
+              
+              let whoAll = [...managerReport.whoChips];
+              if (managerReport.whoCustom.trim()) whoAll.push(managerReport.whoCustom.trim());
+
+              let prefixData = [];
+              if (whereAll.length > 0) prefixData.push(`[📍 Khu vực]: ${whereAll.join(', ')}`);
+              if (whoAll.length > 0) prefixData.push(`[👥 Liên quan]: ${whoAll.join(', ')}`);
+              
+              if (prefixData.length > 0) {
+                  finalContent = prefixData.join('\n') + '\n\n' + finalContent;
+              }
+          }
+
+          await addDoc(getCollection('safety_reports'), {
+            employeeId: currentUser.id,
+            title: generatedTitle,
+            reportType: managerReport.reportType, // Lưu loại báo cáo đặc biệt
+            isSafetyRisk: ['Leader Led Safety Gemba', 'Critical Control Assessment ( CCA)', 'Other Gemba'].includes(managerReport.reportType) ? managerReport.isSafetyRisk : false, // Cờ Mất An Toàn
+            content: finalContent,
+            images: managerReport.images, // Mảng ảnh kèm caption
+            status: 'Approved', // Quản lý đăng thì tự động duyệt để lên bản tin
+            date: getCurrentDate(),
+            timestamp: Date.now()
+          });
+
+          // Trả State về mặc định sau khi gửi thành công
+          const today = getCurrentDate();
+          const myTodayLog = attendance.find(a => a.employeeId === currentUser.id && a.date === today);
+          setManagerReport({ 
+              reportType: 'Leader Led Safety Gemba', 
+              reportShift: myTodayLog ? myTodayLog.shift : '', 
+              reportDate: myTodayLog ? myTodayLog.date : today, 
+              whereChips: [], whoChips: [], 
+              whereCustom: '', whoCustom: '',
+              isSafetyRisk: false,
+              content: '', images: [] 
+          });
+          setShowWhereCustom(false);
+          setShowWhoCustom(false);
+
+          showToast("Đã lưu báo cáo lên Bảng tin Hệ thống!");
+        } catch (e) {
+          showToast("Lỗi gửi báo cáo!", "error");
+        } finally {
+          setLoadingAction(false);
+        }
+    } else {
+        // LUỒNG DÀNH CHO NHÂN VIÊN BÌNH THƯỜNG
+        if(!formData.content) return;
+        setLoadingAction(true);
+        try {
+          await addDoc(getCollection('safety_reports'), {
+            employeeId: currentUser.id,
+            content: formData.content,
+            severity: formData.severity,
+            image: formData.image, // Lưu ảnh đơn
+            status: 'Pending',
+            date: getCurrentDate(),
+            timestamp: Date.now()
+          });
+          setFormData({ content: '', severity: 'Medium', impact: 'Medium', image: null });
+          showToast("Đã gửi báo cáo an toàn! Vui lòng chờ duyệt.");
+        } catch (e) {
+          showToast("Lỗi gửi báo cáo!", "error");
+        } finally {
+          setLoadingAction(false);
+        }
+    }
+  };
+
+  const submitIdea = async () => {
+    if(!formData.content) return;
+    setLoadingAction(true);
+    try {
+      await addDoc(getCollection('ideas'), {
+        employeeId: currentUser.id,
+        content: formData.content,
+        impact: formData.impact,
+        image: formData.image, // Lưu ảnh vào DB
+        status: 'Pending',
+        date: getCurrentDate(),
+        timestamp: Date.now()
+      });
+      setFormData({ content: '', severity: 'Medium', impact: 'Medium', image: null });
+      showToast("Đã gửi ý tưởng thành công!");
+    } catch (e) {
+      showToast("Lỗi gửi ý tưởng!", "error");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) return showToast("Ảnh quá lớn! Vui lòng chọn ảnh < 5MB", "error");
+      const resizedBase64 = await resizeImage(file, 150, 150); // Ép kích thước nhỏ cho Avatar
+      setAvatarPreview(resizedBase64);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setLoadingAction(true);
+    try {
+        const updatedUser = {
+            ...editProfile,
+            avatar: avatarPreview
+        };
+        await updateDoc(getDocRef('employees', currentUser.id), updatedUser);
+        showToast("Đã cập nhật hồ sơ thành công!");
+    } catch (e) {
+        showToast("Lỗi lưu hồ sơ!", "error");
+    } finally {
+        setLoadingAction(false);
+    }
+  };
+
+  // --- NEW: LOGIC XỬ LÝ RIÊNG CHO SUPER ADMIN ---
+  if (currentUser.id === 'SUPER_ADMIN') {
+    return (
+        <div className="p-8 text-center space-y-4 animate-fadeIn">
+            <div className="w-24 h-24 bg-gradient-to-r from-red-500 to-orange-500 rounded-full flex items-center justify-center mx-auto shadow-lg mb-4">
+                <ShieldAlert size={48} className="text-white"/>
+            </div>
+            <h2 className="text-2xl font-black text-gray-800">SYSTEM ADMINISTRATOR</h2>
+            <p className="text-gray-500">Tài khoản này có toàn quyền truy cập hệ thống.</p>
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-xl text-sm text-yellow-800 max-w-md mx-auto">
+                <p>⚠️ <strong>Lưu ý:</strong> Mọi tác vụ ghi nhận, duyệt tin sẽ được lưu dưới tên "System Administrator".</p>
+                <p className="mt-2 text-xs opacity-75">Vui lòng sử dụng các Tab quản trị ở trên để điều hành.</p>
+            </div>
+        </div>
+    );
+  }
+
+  return (
+    <div className="animate-fadeIn">
+      {loadingAction && <div className="fixed inset-0 bg-white/50 z-[200] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={48}/></div>}
+      
+      {/* --- TRỢ LÝ WIZARD FULLSCREEN (TỐI ƯU MOBILE KEYBOARD) --- */}
+      {wizardConfig.isOpen && (
+          <div className="fixed inset-0 z-[300] bg-white sm:bg-black/50 flex items-center justify-center p-0 sm:p-4 animate-fadeIn">
+              <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:max-w-md flex flex-col shadow-2xl overflow-hidden">
+                  
+                  {/* Header (Shrink-0 để không bị ép nhỏ) */}
+                  <div className={`px-5 py-4 border-b flex justify-between items-center ${theme.primaryLightBg} shrink-0`}>
+                      <div>
+                          <h3 className={`font-extrabold ${theme.primaryTextDark} text-lg`}>
+                              {wizardConfig.type === 'safety' ? 'Trợ lý Báo cáo (5W)' : 'Trợ lý Sáng kiến (5W1H)'}
+                          </h3>
+                          <div className="flex gap-1.5 mt-2">
+                              {WIZARD_QUESTIONS[wizardConfig.type].map((_, i) => (
+                                  <div key={i} className={`h-1.5 w-6 rounded-full transition-colors duration-300 ${i <= wizardConfig.step ? theme.primaryBg : 'bg-gray-300'}`} />
+                              ))}
+                          </div>
+                      </div>
+                      <button onClick={closeWizard} className="p-2 text-gray-400 hover:bg-gray-200 rounded-full transition"><X size={24}/></button>
+                  </div>
+
+                  {/* Body (Flex-grow để giãn ra chiếm chỗ, text area tự co lại khi có bàn phím) */}
+                  <div className="p-5 flex-grow flex flex-col bg-white">
+                      <h4 className="text-xl font-black text-gray-800 mb-1">
+                          {WIZARD_QUESTIONS[wizardConfig.type][wizardConfig.step].title}
+                      </h4>
+                      <p className="text-sm text-gray-500 mb-4 font-medium">
+                          {WIZARD_QUESTIONS[wizardConfig.type][wizardConfig.step].desc}
+                      </p>
+                      <textarea
+                          key={`step-${wizardConfig.step}`} // Ép re-render để autoFocus chạy
+                          autoFocus
+                          className={`w-full flex-grow min-h-[120px] p-4 border-2 border-gray-200 rounded-xl focus:border-transparent outline-none text-base resize-none shadow-inner bg-gray-50 ${theme.primaryRing}`}
+                          placeholder="Nhập nội dung vào đây..."
+                          value={wizardAnswers[wizardConfig.step]}
+                          onChange={(e) => handleWizardInput(e.target.value)}
+                      />
+                  </div>
+
+                  {/* Footer (Shrink-0, được đẩy lên trên bàn phím do flex-col) */}
+                  <div className="p-4 border-t bg-white shrink-0 flex gap-3 pb-safe">
+                      <button
+                          disabled={wizardConfig.step === 0}
+                          onClick={prevWizardStep}
+                          className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                          Quay lại
+                      </button>
+                      <button
+                          onClick={nextWizardStep}
+                          className={`flex-[2] py-3.5 ${theme.primaryBg} text-white rounded-xl font-bold ${theme.primaryHover} shadow-lg transition flex items-center justify-center gap-2`}
+                      >
+                          {wizardConfig.step === (wizardConfig.type === 'safety' ? 4 : 5) ? <><CheckCircle2 size={18}/> Hoàn thành</> : 'Tiếp tục'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div className="grid grid-cols-6 gap-2 bg-white p-1 rounded-xl shadow-sm overflow-x-auto mb-6">
+          {[
+            { id: 'news', icon: Megaphone, label: 'News' }, // THÊM TAB NEWS LÊN ĐẦU
+            { id: 'attendance', icon: Clock, label: 'Công' },
+            { id: 'checklist', icon: ClipboardCheck, label: 'Check' },
+            // ĐỔI NHÃN TAB NẾU LÀ QUẢN LÝ
+            { id: 'safety', icon: isManager ? FileText : ShieldAlert, label: isManager ? 'Báo cáo' : 'An toàn' },
+            { id: 'ideas', icon: Lightbulb, label: 'Kaizen' },
+            { id: 'profile', icon: History, label: 'Hồ sơ' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-col items-center justify-center py-2 rounded-lg text-xs font-medium transition-all ${
+                activeTab === tab.id 
+                  ? `${theme.primaryBg} text-white shadow-md transform scale-105` 
+                  : 'text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              <tab.icon size={18} className="mb-1" />
+              {tab.label}
+            </button>
+          ))}
+      </div>
+
+      <div className="space-y-4">
+          {/* TÍNH NĂNG NEWS MỚI THÊM CÙNG BẢNG VÀNG */}
+          {activeTab === 'news' && (
+             <div className="space-y-6 animate-fadeIn pb-20">
+                 
+                 {/* BẢNG VÀNG THÀNH TÍCH (WALL OF FAME) NỔI BẬT */}
+                 {topPerformers.length > 0 && (
+                     <div className="bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 rounded-2xl p-5 border border-yellow-200 shadow-sm relative overflow-hidden">
+                         <div className="absolute -right-4 -top-4 opacity-10">
+                             <Trophy size={100} />
+                         </div>
+                         <h3 className="font-extrabold text-yellow-800 text-lg flex items-center gap-2 mb-4 relative z-10 uppercase tracking-wide">
+                             <Trophy size={20} className="text-yellow-600"/> Những Đóng Góp Tích Cực
+                         </h3>
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+                             {topPerformers.map((emp, idx) => {
+                                 // Logic màu sắc huy chương
+                                 let bgClass = "bg-white";
+                                 let iconColor = "text-yellow-500";
+                                 if (idx === 0) { bgClass = "bg-gradient-to-b from-yellow-100 to-white ring-2 ring-yellow-400 shadow-md transform scale-105 z-10"; iconColor = "text-yellow-500 fill-yellow-500"; }
+                                 else if (idx === 1) { bgClass = "bg-gradient-to-b from-gray-100 to-white border border-gray-300"; iconColor = "text-gray-400 fill-gray-400"; }
+                                 else { bgClass = "bg-gradient-to-b from-orange-100 to-white border border-orange-300"; iconColor = "text-orange-500 fill-orange-500"; }
+
+                                 return (
+                                     <div key={emp.id} className={`rounded-xl p-3 flex items-center gap-3 ${bgClass}`}>
+                                         <div className="relative">
+                                             <Avatar src={emp.avatar} alt={emp.name} size="md"/>
+                                             <div className="absolute -bottom-1 -right-1 bg-white rounded-full">
+                                                {idx === 0 ? <Trophy size={16} className={iconColor}/> : <Medal size={16} className={iconColor}/>}
+                                             </div>
+                                         </div>
+                                         <div className="overflow-hidden">
+                                             <p className="font-bold text-gray-800 text-sm truncate">{emp.name}</p>
+                                             <p className="text-xs text-gray-500 truncate">{emp.group}</p>
+                                             <p className="text-[10px] font-bold text-indigo-600 mt-0.5">{emp.score} Điểm tích cực</p>
+                                         </div>
+                                     </div>
+                                 );
+                             })}
+                         </div>
+                     </div>
+                 )}
+
+                 {/* DANH SÁCH BẢN TIN */}
+                 <div>
+                     <h3 className="font-bold text-gray-700 flex items-center gap-2 mb-3">
+                         <Megaphone size={18} className="text-indigo-600"/> Bảng tin Nội bộ
+                     </h3>
+                     {news.filter(item => !item.isHidden).length === 0 ? (
+                         <Card className="text-center py-10">
+                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                 <Megaphone className="text-gray-400" size={32}/>
+                             </div>
+                             <h3 className="font-bold text-gray-600">Chưa có thông báo nào</h3>
+                             <p className="text-sm text-gray-400">Các thông báo từ ban quản lý sẽ hiển thị ở đây.</p>
+                         </Card>
+                     ) : (
+                         <div className="space-y-4">
+                             {news.filter(item => !item.isHidden).map(item => (
+                                 <div key={item.id} className={`bg-white rounded-2xl p-5 shadow-sm border-l-4 ${item.type === 'URGENT' ? 'border-l-red-500 border-t border-r border-b border-gray-100' : item.type === 'WARNING' ? 'border-l-yellow-500 border-t border-r border-b border-gray-100' : 'border-l-blue-500 border-t border-r border-b border-gray-100'}`}>
+                                     <div className="flex justify-between items-start mb-2">
+                                         <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                             item.type === 'URGENT' ? 'bg-red-100 text-red-700' : 
+                                             item.type === 'WARNING' ? 'bg-yellow-100 text-yellow-700' : 
+                                             'bg-blue-100 text-blue-700'
+                                         }`}>
+                                             {item.type === 'URGENT' ? 'KHẨN CẤP' : item.type === 'WARNING' ? 'CHÚ Ý' : 'THÔNG BÁO'}
+                                         </div>
+                                         <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">{item.date}</span>
+                                     </div>
+                                     <h3 className="font-extrabold text-gray-800 text-lg mb-2 leading-tight">{item.title}</h3>
+                                     <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed mb-4">
+                                         {item.content}
+                                     </p>
+                                     <div className="border-t border-gray-100 pt-3 flex items-center gap-2 text-xs text-gray-500 bg-gray-50/50 rounded-lg p-2">
+                                         <UserCheck size={14} className="text-indigo-400"/>
+                                         <span>Đăng bởi: <span className="font-bold text-gray-700">{item.authorName}</span> <span className="opacity-75">({item.authorGroup})</span></span>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                     )}
+                 </div>
+             </div>
+          )}
+
+          {activeTab === 'attendance' && (
+            <div className="space-y-4 animate-fadeIn">
+              <Card className="text-center relative overflow-hidden">
+                <h3 className="text-lg font-bold text-gray-800 mb-1">Điểm Danh Hôm Nay</h3>
+                <p className="text-sm text-gray-500 mb-4">{getCurrentDate()}</p>
+                {todayLog ? (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-6 flex flex-col items-center animate-fadeIn">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-3 shadow-sm">
+                      <CheckCircle2 size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold text-green-700">Đã Check-in Ca {todayLog.shift}</h2>
+                    <p className="text-green-600 font-medium mt-1">Lúc {todayLog.time}</p>
+                    <div className="mt-6 w-full pt-4 border-t border-green-200">
+                      <button onClick={() => setShowRedoConfirm(true)} className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-red-500 w-full py-2 transition hover:bg-white rounded-lg cursor-pointer">
+                        <RefreshCcw size={16} /> Chọn nhầm? Điểm danh lại
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {['D1', 'D2', 'X'].map(shift => {
+                      const isSuggested = shift === suggestedShift;
+                      const shiftTime = shift === 'D1' ? '(07:30 - 19:30)' : shift === 'D2' ? '(19:30 - 07:30)' : '(Ca đặc biệt)';
+                      const btnClass = isSuggested
+                        ? `bg-gradient-to-r ${theme.gradient} text-white shadow-lg ring-2 ring-offset-2 ${theme.primaryRing.replace('focus:', '')}`
+                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300';
+                      return (
+                        <button key={shift} onClick={() => handleCheckIn(shift)} className={`relative w-full py-4 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-between px-6 ${btnClass}`}>
+                           <div className="flex items-center gap-3">
+                             <div className={`p-2 rounded-full ${isSuggested ? 'bg-white/20' : 'bg-gray-100'}`}><Clock size={20} /></div>
+                             <div className="text-left"><div className="text-lg">CA {shift}</div><div className={`text-xs font-normal ${isSuggested ? 'text-indigo-100' : 'text-gray-400'}`}>{shiftTime}</div></div>
+                           </div>
+                           {isSuggested && (
+                             <div className="absolute top-0 right-0 transform translate-x-1 -translate-y-1"><span className="flex items-center gap-1 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-bounce"><Sparkles size={10} /> Đề xuất</span></div>
+                           )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+          
+          {/* UPDATED: Checklist Module */}
+          {activeTab === 'checklist' && <ChecklistWorkspace currentUser={currentUser} showToast={showToast} />}
+          
+          {activeTab === 'safety' && (
+            <div className="space-y-4 animate-fadeIn">
+                {isManager ? (
+                    // ==========================================
+                    // FORM BÁO CÁO NÂNG CAO CHO QUẢN LÝ
+                    // ==========================================
+                    <Card className={`border-t-4 ${theme.primaryBorder}`}>
+                        <h3 className={`font-bold ${theme.primaryTextDark} mb-4 flex items-center gap-2 text-lg`}>
+                            <FileText size={22}/> Tạo Báo cáo / Ghi nhận Hiện trường
+                        </h3>
+
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Phân loại Báo cáo</label>
+                                    <select 
+                                        className={`w-full p-3 border border-gray-200 rounded-xl focus:ring-2 bg-gray-50 font-bold outline-none transition ${theme.primaryRing} ${theme.primaryText}`}
+                                        value={managerReport.reportType}
+                                        onChange={(e) => {
+                                            setManagerReport({...managerReport, reportType: e.target.value, images: []}); // Đổi loại -> Xóa ảnh cũ để tránh lỗi limit
+                                        }}
+                                    >
+                                        <option value="Pre-shift toolbox talk">🗣️ Pre-shift toolbox talk</option>
+                                        <option value="Leader Led Safety Gemba">🔍 Leader Led Safety Gemba</option>
+                                        <option value="Leader Led Activities">👨‍✈️ Leader Led Activities</option>
+                                        <option value="Critical Control Assessment ( CCA)">⚠️ Critical Control Assessment ( CCA)</option>
+                                        <option value="SQDC">📊 SQDC</option>
+                                        <option value="Other Gemba">🌐 Other Gemba</option>
+                                    </select>
+                                </div>
+
+                                {/* BLOCK AUTO-FILL CA & NGÀY */}
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tiêu đề (Tự động hóa)</label>
+                                    {attendance.find(a => a.employeeId === currentUser.id && a.date === getCurrentDate()) ? (
+                                        <div className="flex gap-2">
+                                            <div className="flex-1 p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-600 font-bold text-sm flex items-center gap-2 cursor-not-allowed">
+                                                <Clock size={16}/> Ca {managerReport.reportShift}
+                                            </div>
+                                            <div className="flex-1 p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-600 font-bold text-sm flex items-center gap-2 cursor-not-allowed">
+                                                <CalendarDays size={16}/> {managerReport.reportDate}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <select 
+                                                className={`flex-1 p-3 border border-gray-200 rounded-xl outline-none font-bold text-gray-700 bg-white ${theme.primaryRing}`}
+                                                value={managerReport.reportShift}
+                                                onChange={(e) => setManagerReport({...managerReport, reportShift: e.target.value})}
+                                            >
+                                                <option value="">-- Ca --</option>
+                                                <option value="D1">Ca D1</option>
+                                                <option value="D2">Ca D2</option>
+                                                <option value="X">Ca X</option>
+                                            </select>
+                                            <input 
+                                                type="text" 
+                                                placeholder="DD/MM/YYYY"
+                                                className={`flex-[2] p-3 border border-gray-200 rounded-xl outline-none font-bold text-gray-700 bg-white ${theme.primaryRing}`}
+                                                value={managerReport.reportDate}
+                                                onChange={(e) => setManagerReport({...managerReport, reportDate: e.target.value})}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* MODULE QUICK CHIPS 5W1H (CHỈ HIỆN CHO GEMBA / AN TOÀN) */}
+                            {hasQuickChips(managerReport.reportType) && (
+                                <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                    {/* CẬP NHẬT: CHECKBOX MẤT AN TOÀN */}
+                                    {['Leader Led Safety Gemba', 'Critical Control Assessment ( CCA)', 'Other Gemba'].includes(managerReport.reportType) && (
+                                        <div className="pb-3 border-b border-red-200">
+                                            <label className="flex items-center gap-2 text-sm text-red-700 font-bold bg-white px-3 py-2 rounded-lg border border-red-200 cursor-pointer w-fit hover:bg-red-50 transition shadow-sm select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    className="w-4 h-4 text-red-600 rounded focus:ring-red-500 cursor-pointer"
+                                                    checked={managerReport.isSafetyRisk}
+                                                    onChange={(e) => setManagerReport({...managerReport, isSafetyRisk: e.target.checked})}
+                                                />
+                                                <ShieldAlert size={18} className="text-red-500"/>
+                                                Đánh dấu: Có tình huống gây MẤT AN TOÀN
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                            <MapPin size={12}/> Khu vực phát hiện (Where)
+                                        </label>
+                                        <div className="flex flex-wrap gap-2 items-center">
+                                            {WHERE_OPTIONS.map(opt => (
+                                                <button
+                                                    key={opt}
+                                                    onClick={() => toggleManagerChip('whereChips', opt)}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition border ${managerReport.whereChips.includes(opt) ? `${theme.primaryBg} text-white border-transparent shadow-sm` : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+                                                >
+                                                    {opt}
+                                                </button>
+                                            ))}
+                                            {/* NÚT THÊM THỦ CÔNG */}
+                                            <button 
+                                                onClick={() => setShowWhereCustom(!showWhereCustom)}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition border ${showWhereCustom || managerReport.whereCustom ? `${theme.primaryBg} text-white border-transparent` : 'bg-white text-gray-500 border-dashed border-gray-300 hover:bg-gray-100'}`}
+                                            >
+                                                + Khác
+                                            </button>
+                                        </div>
+                                        {/* Ô NHẬP THỦ CÔNG */}
+                                        {showWhereCustom && (
+                                            <input 
+                                                type="text" 
+                                                autoFocus
+                                                placeholder="Gõ tên khu vực khác..." 
+                                                className={`w-full mt-2 p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 bg-white ${theme.primaryRing}`}
+                                                value={managerReport.whereCustom}
+                                                onChange={(e) => setManagerReport({...managerReport, whereCustom: e.target.value})}
+                                            />
+                                        )}
+                                    </div>
+
+                                    <div className="border-t border-gray-200/50 pt-3">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                                            <Users size={12}/> Đối tượng liên quan (Who)
+                                        </label>
+                                        <div className="flex flex-wrap gap-2 items-center">
+                                            {WHO_OPTIONS.map(opt => (
+                                                <button
+                                                    key={opt}
+                                                    onClick={() => toggleManagerChip('whoChips', opt)}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition border ${managerReport.whoChips.includes(opt) ? `${theme.primaryBg} text-white border-transparent shadow-sm` : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-100'}`}
+                                                >
+                                                    {opt}
+                                                </button>
+                                            ))}
+                                            {/* NÚT THÊM THỦ CÔNG */}
+                                            <button 
+                                                onClick={() => setShowWhoCustom(!showWhoCustom)}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition border ${showWhoCustom || managerReport.whoCustom ? `${theme.primaryBg} text-white border-transparent` : 'bg-white text-gray-500 border-dashed border-gray-300 hover:bg-gray-100'}`}
+                                            >
+                                                + Khác
+                                            </button>
+                                        </div>
+                                        {/* Ô NHẬP THỦ CÔNG */}
+                                        {showWhoCustom && (
+                                            <input 
+                                                type="text" 
+                                                autoFocus
+                                                placeholder="Gõ tên đối tượng khác..." 
+                                                className={`w-full mt-2 p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 bg-white ${theme.primaryRing}`}
+                                                value={managerReport.whoCustom}
+                                                onChange={(e) => setManagerReport({...managerReport, whoCustom: e.target.value})}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nội dung chi tiết (What, Why, How)</label>
+                                <textarea 
+                                    className={`w-full p-3 border border-gray-200 rounded-xl outline-none h-28 resize-none bg-white font-medium focus:ring-2 ${theme.primaryRing}`}
+                                    placeholder="Mô tả hiện trạng (Cái gì, Ở đâu, Khi nào), Đánh giá nguyên nhân (Tại sao), và Hướng xử lý..."
+                                    value={managerReport.content}
+                                    onChange={(e) => setManagerReport({ ...managerReport, content: e.target.value })}
+                                />
+                            </div>
+
+                            {/* MODULE UPLOAD NHIỀU ẢNH (VỚI CAPTION BẮT BUỘC THEO ĐIỀU KIỆN) */}
+                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                <div className="flex justify-between items-center mb-3">
+                                    <label className="text-xs font-bold text-gray-700 uppercase flex items-center gap-1">
+                                        <Camera size={14}/> Hình ảnh minh chứng ({managerReport.images.length}/{getImageLimit(managerReport.reportType)})
+                                    </label>
+                                    {managerReport.images.length < getImageLimit(managerReport.reportType) && (
+                                        <label className={`text-[10px] font-bold bg-white ${theme.primaryText} px-3 py-1.5 rounded border shadow-sm cursor-pointer transition ${theme.primaryBorder} hover:${theme.primaryLightBg}`}>
+                                            + Thêm ảnh
+                                            <input type="file" multiple accept="image/*" className="hidden" onChange={handleManagerMultiImageUpload} />
+                                        </label>
+                                    )}
+                                </div>
+
+                                {managerReport.images.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                                        {managerReport.images.map((img, idx) => (
+                                            <div key={idx} className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm relative group">
+                                                <ImagePreview src={img.src} alt={`Ảnh ${idx+1}`} className="w-full h-32 object-cover rounded-md mb-2"/>
+                                                <button 
+                                                    onClick={() => removeManagerImage(idx)}
+                                                    className="absolute top-3 right-3 bg-red-500 text-white p-1 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition"
+                                                    title="Xóa ảnh"
+                                                >
+                                                    <X size={14}/>
+                                                </button>
+                                                <div className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder={isCaptionRequired(managerReport.reportType) ? "Nhập chú thích (Bắt buộc)..." : "Ghi chú ảnh (Nếu có)..."}
+                                                        className={`w-full p-2 border-b text-xs outline-none text-center italic transition bg-transparent ${isCaptionRequired(managerReport.reportType) && !img.caption ? 'border-red-300 bg-red-50/50' : `focus:border-current ${theme.primaryText}`}`}
+                                                        value={img.caption}
+                                                        onChange={(e) => updateManagerImageCaption(idx, e.target.value)}
+                                                    />
+                                                    {isCaptionRequired(managerReport.reportType) && (
+                                                        <span className="absolute right-1 top-2 text-red-500 text-xs font-bold" title="Bắt buộc">*</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {managerReport.images.length === 0 && (
+                                    <div className="text-center py-6 border-2 border-dashed border-gray-300 rounded-lg text-gray-400 bg-white text-xs font-medium">
+                                        Giới hạn tải lên tối đa {getImageLimit(managerReport.reportType)} ảnh.
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* CẬP NHẬT: GIAO DIỆN 2 NÚT BẤM (COPY VÀ LƯU) */}
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <button 
+                                    onClick={handleCopyReport} 
+                                    className={`sm:w-1/3 w-full bg-white ${theme.primaryText} py-3.5 rounded-xl font-bold text-sm shadow-sm border-2 ${theme.primaryBorder} hover:${theme.primaryLightBg} transition flex justify-center items-center gap-2 active:scale-95`}
+                                    title="Copy toàn bộ nội dung để gửi Email/Zalo"
+                                >
+                                    <FileText size={18}/> Copy (Email)
+                                </button>
+
+                                <button 
+                                    onClick={submitSafety} 
+                                    disabled={loadingAction}
+                                    className={`sm:w-2/3 w-full ${theme.primaryBg} text-white py-3.5 rounded-xl font-black text-lg shadow-lg transition flex justify-center items-center gap-2 ${theme.primaryHover} active:scale-95`}
+                                >
+                                    {loadingAction ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>} Lưu Lên Bảng Tin
+                                </button>
+                            </div>
+                        </div>
+                    </Card>
+                ) : (
+                    // ==========================================
+                    // FORM BÁO CÁO CƠ BẢN CHO NHÂN VIÊN
+                    // ==========================================
+                    <Card>
+                        <h3 className="font-bold text-red-600 mb-4">Báo cáo An toàn</h3>
+                        
+                        {/* GỢI Ý 5W CHO BÁO CÁO AN TOÀN */}
+                        <div className="mb-3 bg-red-50 p-3 rounded-lg border border-red-100">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                                <span className="text-xs font-bold text-red-700 flex items-center gap-1"><ShieldAlert size={12}/> Báo cáo chuẩn 5W — Trả lời đủ 5 câu hỏi:</span>
+                                <button 
+                                    onClick={() => openWizard('safety')}
+                                    className="text-[10px] font-bold bg-white text-red-600 px-3 py-1.5 rounded-lg border border-red-200 shadow-sm hover:bg-red-100 transition whitespace-nowrap flex items-center gap-1 active:scale-95"
+                                >
+                                    <Bot size={14}/> Bật Trợ lý 5W
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 text-[10px]">
+                                <div className="bg-white rounded-lg px-2 py-1.5 border border-red-100 shadow-sm"><span className="font-black text-red-600 block">WHAT</span><span className="text-gray-500">Sự việc gì xảy ra?</span></div>
+                                <div className="bg-white rounded-lg px-2 py-1.5 border border-red-100 shadow-sm"><span className="font-black text-red-600 block">WHERE</span><span className="text-gray-500">Xảy ra ở đâu? (khu vực, thiết bị)</span></div>
+                                <div className="bg-white rounded-lg px-2 py-1.5 border border-red-100 shadow-sm"><span className="font-black text-red-600 block">WHEN</span><span className="text-gray-500">Khi nào? (thời gian, ca làm)</span></div>
+                                <div className="bg-white rounded-lg px-2 py-1.5 border border-red-100 shadow-sm"><span className="font-black text-red-600 block">WHO</span><span className="text-gray-500">Ai liên quan? (người, bộ phận)</span></div>
+                                <div className="bg-white rounded-lg px-2 py-1.5 border border-red-100 shadow-sm"><span className="font-black text-red-600 block">WHY</span><span className="text-gray-500">Tại sao nguy hiểm?</span></div>
+                            </div>
+                        </div>
+
+                        <textarea 
+                            className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-red-500 outline-none h-32 resize-none mb-3"
+                            placeholder="Ví dụ: [WHAT] Phát hiện bãi RTG05 bị rò dầu thủy lực. [WHERE] Bãi B, làn 3. [WHEN] Ca ngày 07:30. [WHO] Vận hành RTG: Nguyễn Văn A. [WHY] Có thể gây trơn trượt, nguy cơ tai nạn..."
+                            value={formData.content}
+                            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                        />
+                        
+                        {/* CẬP NHẬT: GIAO DIỆN UPLOAD ẢNH CHO BÁO CÁO */}
+                        <div className="mb-4">
+                            {formData.image ? (
+                                <div className="relative w-fit">
+                                    <ImagePreview src={formData.image} alt="Bằng chứng" className="h-32 w-auto object-cover rounded-lg border border-gray-300 shadow-sm" />
+                                    <button 
+                                        onClick={() => setFormData(prev => ({...prev, image: null}))}
+                                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600"
+                                    >
+                                        <X size={14}/>
+                                    </button>
+                                </div>
+                            ) : (
+                                <label className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition w-fit">
+                                    <Camera size={18} className="text-red-500"/> Chụp / Chọn ảnh đính kèm
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleReportImageUpload} />
+                                </label>
+                            )}
+                        </div>
+
+
+                        
+                        <button onClick={submitSafety} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition">Gửi Báo cáo</button>
+                    </Card>
+                )}
+
+                {/* NEW: LỊCH SỬ BÁO CÁO (CHUNG CHO CẢ NV VÀ QUẢN LÝ) */}
+                <Card>
+                    <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2 text-sm uppercase">
+                        <History size={16}/> Lịch sử đã đăng
+                    </h4>
+                    {safetyReports.filter(r => r.employeeId === currentUser.id).length === 0 ? (
+                        <p className="text-center text-gray-400 text-xs italic py-2">Chưa có báo cáo nào.</p>
+                    ) : (
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+                            {safetyReports.filter(r => r.employeeId === currentUser.id).sort((a,b) => (b.timestamp||0)-(a.timestamp||0)).map(report => (
+                                <div key={report.id} onClick={() => setSelectedFeedItem(report)} className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-sm cursor-pointer hover:bg-white transition hover:shadow-sm hover:border-indigo-200 relative group">
+                                    {/* NÚT RÚT LẠI */}
+                                    {report.status === 'Pending' && (
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setRecallItem({ ...report, collectionName: 'safety_reports' }); 
+                                                setShowAuthModal(true); 
+                                            }}
+                                            className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition z-10 opacity-0 group-hover:opacity-100"
+                                            title="Rút lại báo cáo"
+                                        >
+                                            <Trash2 size={14}/>
+                                        </button>
+                                    )}
+                                    <div className="flex justify-between items-start mb-1 pr-6">
+                                        <span className="text-xs text-gray-500 font-bold">{report.date}</span>
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                            report.status === 'Approved' ? 'bg-green-100 text-green-700' : 
+                                            report.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                            {report.status === 'Approved' ? 'Đã duyệt / Đã đăng' : report.status === 'Rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                                        </span>
+                                    </div>
+                                    
+                                    {/* THÔNG TIN BÁO CÁO CỦA QUẢN LÝ / NHÂN VIÊN */}
+                                    {report.title && <h5 className="font-bold text-gray-800 text-sm mb-1">{report.title}</h5>}
+                                    <p className="text-gray-600 font-medium line-clamp-2">{report.content}</p>
+                                    
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                                        {report.reportType ? (
+                                            <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 font-bold">{report.reportType}</span>
+                                        ) : (
+                                            <><ShieldAlert size={10}/> Mức độ: {report.severity}</>
+                                        )}
+                                        {/* Đếm số ảnh nếu có mảng images */}
+                                        {report.images && <span className="flex items-center gap-1"><Camera size={10}/> {report.images.length} ảnh</span>}
+                                    </div>
+
+                                    {/* CẬP NHẬT: Hiển thị ảnh đơn hoặc ảnh đầu tiên trong mảng để review */}
+                                    {(report.image || (report.images && report.images.length > 0)) && (
+                                        <div className="mt-2">
+                                            <ImagePreview src={report.images ? report.images[0].src : report.image} alt="Đính kèm" className="h-20 w-auto rounded border border-gray-200 object-cover"/>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Manager Feedback Display */}
+                                    {report.managerFeedback && (
+                                        <div className="mt-2 bg-white p-2 rounded border border-gray-200 text-xs text-gray-600 italic flex gap-2 items-start">
+                                            <div className="mt-0.5"><UserCheck size={12} className="text-indigo-500"/></div>
+                                            <div>
+                                                <span className="font-bold text-indigo-600 not-italic mr-1 block uppercase text-[10px] tracking-wide">
+                                                    {report.processorName 
+                                                        ? `${report.processorGroup} - ${report.processorName.toUpperCase()} (${report.processorCode})` 
+                                                        : 'Quản lý'}
+                                                </span>
+                                                {report.managerFeedback}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Card>
+            </div>
+          )}
+
+          {activeTab === 'ideas' && (
+            <Card>
+                <h3 className={`font-bold ${theme.primaryText} mb-4`}>Sáng kiến Kaizen</h3>
+
+                {/* GỢI Ý 5W1H CHO SÁNG KIẾN KAIZEN */}
+                <div className={`mb-3 ${theme.primaryLightBg} p-3 rounded-lg border ${theme.primaryBorder}`}>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                        <span className={`text-xs font-bold ${theme.primaryTextDark} flex items-center gap-1`}><Lightbulb size={12}/> Trình bày ý tưởng chuẩn 5W1H — 6 câu hỏi then chốt:</span>
+                        <button 
+                            onClick={() => openWizard('idea')}
+                            className={`text-[10px] font-bold bg-white ${theme.primaryText} px-3 py-1.5 rounded-lg border ${theme.primaryBorder} shadow-sm hover:${theme.primaryLightBg} transition whitespace-nowrap flex items-center gap-1 active:scale-95`}
+                        >
+                            <Bot size={14}/> Bật Trợ lý 5W1H
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>WHAT</span><span className="text-gray-500">Vấn đề / ý tưởng là gì?</span></div>
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>WHERE</span><span className="text-gray-500">Áp dụng ở khu vực nào?</span></div>
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>WHEN</span><span className="text-gray-500">Khi nào có thể triển khai?</span></div>
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>WHO</span><span className="text-gray-500">Ai thực hiện / hưởng lợi?</span></div>
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>WHY</span><span className="text-gray-500">Tại sao cần cải tiến?</span></div>
+                        <div className={`bg-white rounded-lg px-2 py-1.5 border ${theme.primaryBorder} shadow-sm`}><span className={`font-black ${theme.primaryText} block`}>HOW</span><span className="text-gray-500">Cách thực hiện cụ thể?</span></div>
+                    </div>
+                </div>
+
+                <textarea 
+                    className={`w-full p-3 border rounded-xl outline-none h-32 resize-none mb-3 ${theme.primaryRing}`}
+                    placeholder="Ví dụ: [WHAT] Tối ưu lịch bảo trì RTG định kỳ. [WHERE] Bãi A, B. [WHEN] Tháng 7. [WHO] Kỹ thuật + Vận hành. [WHY] Giảm downtime 20%. [HOW] Chuyển từ PM hàng tuần sang PM theo giờ vận hành..."
+                    value={formData.content}
+                    onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                />
+
+                {/* CẬP NHẬT: GIAO DIỆN UPLOAD ẢNH CHO SÁNG KIẾN */}
+                <div className="mb-4">
+                    {formData.image ? (
+                        <div className="relative w-fit">
+                            <ImagePreview src={formData.image} alt="Minh họa" className="h-32 w-auto object-cover rounded-lg border border-gray-300 shadow-sm" />
+                            <button 
+                                onClick={() => setFormData(prev => ({...prev, image: null}))}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600"
+                            >
+                                <X size={14}/>
+                            </button>
+                        </div>
+                    ) : (
+                        <label className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition w-fit">
+                            <ImagePlus size={18} className={theme.primaryText}/> Chụp / Chọn ảnh đính kèm
+                            <input type="file" accept="image/*" className="hidden" onChange={handleReportImageUpload} />
+                        </label>
+                    )}
+                </div>
+
+
+
+                <button onClick={submitIdea} className={`w-full ${theme.primaryBg} text-white py-3 rounded-xl font-bold ${theme.primaryHover} transition`}>Gửi Ý tưởng</button>
+                
+                {/* NEW: IDEA HISTORY LIST */}
+                <div className="mt-6 border-t pt-4 animate-slideUp">
+                    <h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2 text-sm uppercase">
+                        <History size={16}/> Lịch sử sáng kiến
+                    </h4>
+                    {ideas.filter(i => i.employeeId === currentUser.id).length === 0 ? (
+                        <p className="text-center text-gray-400 text-xs italic py-2">Chưa có ý tưởng nào.</p>
+                    ) : (
+                        <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                            {ideas.filter(i => i.employeeId === currentUser.id).sort((a,b) => (b.timestamp||0)-(a.timestamp||0)).map(idea => (
+                                <div key={idea.id} onClick={() => setSelectedFeedItem(idea)} className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-sm cursor-pointer hover:bg-white transition hover:shadow-sm hover:border-indigo-200 relative group">
+                                    {/* NÚT RÚT LẠI (NHIỆM VỤ 3) */}
+                                    {idea.status === 'Pending' && (
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setRecallItem({ ...idea, collectionName: 'ideas' }); 
+                                                setShowAuthModal(true); 
+                                            }}
+                                            className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition z-10 opacity-0 group-hover:opacity-100"
+                                            title="Rút lại ý tưởng"
+                                        >
+                                            <Trash2 size={14}/>
+                                        </button>
+                                    )}
+                                    <div className="flex justify-between items-start mb-1 pr-6">
+                                        <span className="text-xs text-gray-500 font-bold">{idea.date}</span>
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                            idea.status === 'Approved' ? 'bg-green-100 text-green-700' : 
+                                            idea.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                            {idea.status === 'Approved' ? 'Đã duyệt' : idea.status === 'Rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                                        </span>
+                                    </div>
+                                    <p className="text-gray-800 font-medium line-clamp-2">{idea.content}</p>
+
+                                    {/* CẬP NHẬT: Hiển thị ảnh trong lịch sử nếu có */}
+                                    {idea.image && (
+                                        <div className="mt-2">
+                                            <ImagePreview src={idea.image} alt="Minh họa" className="h-20 w-auto rounded border border-gray-200 object-cover"/>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                                        <Lightbulb size={10}/> Tác động: {idea.impact}
+                                    </div>
+
+                                    {/* Manager Feedback Display - UPDATED FORMAT */}
+                                    {idea.managerFeedback && (
+                                        <div className="mt-2 bg-white p-2 rounded border border-gray-200 text-xs text-gray-600 italic flex gap-2 items-start">
+                                            <div className="mt-0.5"><UserCheck size={12} className="text-indigo-500"/></div>
+                                            <div>
+                                                <span className="font-bold text-indigo-600 not-italic mr-1 block uppercase text-[10px] tracking-wide">
+                                                    {idea.processorName 
+                                                        ? `${idea.processorGroup} - ${idea.processorName.toUpperCase()} (${idea.processorCode})` 
+                                                        : 'Quản lý'}
+                                                </span>
+                                                {idea.managerFeedback}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Card>
+          )}
+          
+          {/* PROFILE TAB */}
+          {activeTab === 'profile' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* 1. Header Profile Card & Avatar Upload */}
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative overflow-hidden">
+                  <div className={`absolute top-0 left-0 w-full h-24 bg-gradient-to-r ${theme.gradient}`}></div>
+                  <div className="relative flex flex-col items-center -mt-4">
+                       <div className="relative group">
+                           <Avatar src={avatarPreview || currentUser.avatar} alt={currentUser.name} size="xl" theme={theme}/>
+                           <label className="absolute bottom-0 right-0 bg-white p-2 rounded-full shadow-md cursor-pointer hover:bg-gray-50 transition border border-gray-200 group-hover:scale-110">
+                               <Camera size={18} className="text-indigo-600"/>
+                               <input type="file" className="hidden" accept="image/*" onChange={handleAvatarChange}/>
+                           </label>
+                       </div>
+                       <h2 className="text-2xl font-black text-gray-800 mt-3">{currentUser.name}</h2>
+                       <p className="text-sm text-gray-500 font-bold uppercase tracking-wide">{currentUser.code} • {currentUser.position}</p>
+                       <div className="mt-2"><GroupBadge group={currentUser.group} code={currentUser.code}/></div>
+                  </div>
+              </div>
+
+              {/* 2. Personal Information Form (Editable) */}
+              <Card>
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b pb-3 gap-2">
+                      <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                          <UserCheck size={20} className={theme.primaryText}/> Thông tự cá nhân
+                      </h3>
+                      <div className="flex gap-2 w-full md:w-auto">
+                          {/* NEW: CHANGE PASSWORD BUTTON */}
+                          <button 
+                              onClick={() => setShowChangePassModal(true)}
+                              className="flex-1 md:flex-none bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 border border-gray-300"
+                          >
+                              <Key size={14}/> Đổi mật khẩu
+                          </button>
+                          
+                          <button 
+                              onClick={handleSaveProfile} 
+                              disabled={loadingAction}
+                              className={`flex-1 md:flex-none ${theme.primaryBg} text-white px-4 py-2 rounded-lg text-sm font-bold shadow ${theme.primaryHover} transition flex items-center justify-center gap-2 active:scale-95`}
+                          >
+                              {loadingAction ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Lưu thay đổi
+                          </button>
+                      </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><Phone size={12}/> Số điện thoại</label>
+                          <input 
+                              type="text" 
+                              className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium ${theme.primaryRing}`}
+                              value={editProfile.phone}
+                              onChange={(e) => setEditProfile({...editProfile, phone: e.target.value})}
+                              placeholder="Nhập SĐT liên hệ..."
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><Mail size={12}/> Email</label>
+                          <input 
+                              type="email" 
+                              className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium ${theme.primaryRing}`}
+                              value={editProfile.email}
+                              onChange={(e) => setEditProfile({...editProfile, email: e.target.value})}
+                              placeholder="Nhập Email..."
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><MapPin size={12}/> Địa chỉ</label>
+                          <input 
+                              type="text" 
+                              className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium ${theme.primaryRing}`}
+                              value={editProfile.address}
+                              onChange={(e) => setEditProfile({...editProfile, address: e.target.value})}
+                              placeholder="Nhập địa chỉ cư trú..."
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><CalendarDays size={12}/> Ngày sinh</label>
+                          <input 
+                              type="text" 
+                              className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium ${theme.primaryRing}`}
+                              value={editProfile.dob}
+                              onChange={(e) => setEditProfile({...editProfile, dob: e.target.value})}
+                              placeholder="DD/MM/YYYY"
+                          />
+                      </div>
+                      
+                      {/* CẬP NHẬT: Giao diện Dropdown Tuyến xe và Lộ trình */}
+                      <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><MapPin size={12}/> Tuyến xe</label>
+                              <select 
+                                  className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium text-gray-700 ${theme.primaryRing}`}
+                                  value={editProfile.routeLine}
+                                  onChange={(e) => setEditProfile({...editProfile, routeLine: e.target.value})}
+                              >
+                                  <option value="">-- Chọn tuyến --</option>
+                                  <option value="Biên Hòa">Tuyến Biên Hòa</option>
+                                  <option value="Vũng Tàu">Tuyến Vũng Tàu</option>
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5 flex items-center gap-1"><ArrowRightCircle size={12}/> Lộ trình / Phương tiện</label>
+                              <select 
+                                  className={`w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white outline-none transition font-medium text-gray-700 ${theme.primaryRing}`}
+                                  value={editProfile.commuteMethod}
+                                  onChange={(e) => setEditProfile({...editProfile, commuteMethod: e.target.value})}
+                              >
+                                  <option value="">-- Chọn phương tiện --</option>
+                                  <option value="Xe bus">Xe Bus Công ty</option>
+                                  <option value="Xe máy">Xe máy tự túc</option>
+                              </select>
+                          </div>
+                      </div>
+                  </div>
+              </Card>
+
+              {/* QR CODE SECTION */}
+              <EmployeeQRSection currentUser={currentUser} showToast={showToast} />
+
+              {/* 3. Performance Records (My History) */}
+              {myRecords.length > 0 ? (
+                  <Card>
+                      <h4 className="font-bold text-gray-800 flex items-center gap-2 mb-4 border-b pb-3">
+                          <FileText size={20} className={theme.primaryText}/> Lịch sử Ghi nhận & Đánh giá
+                      </h4>
+                      <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
+                          {myRecords.map(rec => {
+                              const ratingInfo = getRatingLabel(rec.rating || 3);
+                              // Determine Icon
+                              let RecIcon = CheckCircle2;
+                              let borderClass = 'border-l-blue-500';
+                              
+                              if (rec.category === 'SAFETY') { RecIcon = ShieldAlert; borderClass = 'border-l-red-500'; }
+                              else if (rec.category === 'ATTITUDE') { RecIcon = ThumbsUp; borderClass = 'border-l-purple-500'; }
+                              else if (rec.category === 'ATTENDANCE') { RecIcon = Clock; borderClass = 'border-l-green-500'; }
+                              
+                              if (rec.rating <= 2) borderClass = 'border-l-red-500';
+                              if (rec.rating >= 4) borderClass = 'border-l-green-500';
+
+                              return (
+                                  <div key={rec.id} className={`p-4 rounded-xl border-l-4 shadow-sm text-sm bg-white border border-gray-100 ${borderClass} hover:shadow-md transition`}>
+                                      <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`px-2 py-1 rounded text-[10px] font-bold border flex items-center gap-1 uppercase tracking-wider ${ratingInfo.color}`}>
+                                                <RecIcon size={12}/> {rec.rating || 3} Sao
+                                            </div>
+                                            <span className="text-[10px] font-bold uppercase text-gray-500 bg-gray-100 border px-1.5 py-0.5 rounded">{rec.category || 'CHUNG'}</span>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded">{rec.date}</span>
+                                      </div>
+                                      <p className="text-gray-800 mb-3 whitespace-pre-wrap leading-relaxed font-medium pl-1">{rec.content}</p>
+                                      <div className="text-[10px] text-gray-500 border-t pt-2 flex items-center gap-1 bg-gray-50/50 p-2 rounded -mx-2 -mb-2 mt-2">
+                                          <UserCheck size={12} className={theme.primaryText}/> Ghi nhận bởi: <span className="font-bold text-gray-700">{rec.recorderName}</span> <span className="text-gray-400">({rec.recorderGroup})</span>
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </Card>
+              ) : (
+                  <div className="text-center py-8 bg-white rounded-xl border border-dashed border-gray-300">
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2 text-gray-400"><FileText size={24}/></div>
+                      <p className="text-gray-500 text-sm">Chưa có ghi nhận nào trong hồ sơ.</p>
+                  </div>
+              )}
+            </div>
+          )}
+      </div>
+
+      {/* THÊM: ITEM DETAIL MODAL CHO NHÂN VIÊN */}
+      <Modal isOpen={!!selectedFeedItem} onClose={() => setSelectedFeedItem(null)} title="Chi tiết báo cáo / Sáng kiến">
+          {selectedFeedItem && (
+              <ActivityFeedCard 
+                  item={selectedFeedItem} 
+                  employees={employees} 
+                  currentUser={currentUser} 
+                  onPostComment={handlePostComment} 
+                  commentText={commentText} 
+                  setCommentText={setCommentText} 
+              />
+          )}
+      </Modal>
+
+      {/* NEW: SECURITY MODAL FOR RECALL */}
+      <SecurityModal 
+          isOpen={showAuthModal} 
+          onClose={() => { setShowAuthModal(false); setRecallItem(null); }} 
+          onConfirm={handleRecallReport}
+          title="Xác nhận Rút lại"
+          warningMessage="Hành động này sẽ xóa vĩnh viễn báo cáo/sáng kiến này khỏi hệ thống. Bạn có chắc chắn muốn tiếp tục?"
+          currentUser={currentUser}
+      />
+
+      {/* THÊM MỚI: MODAL LỊCH SỬ THIẾT BỊ CHO NHÂN VIÊN (DEEP LINK TỪ SMART CONTENT) */}
+      <Modal 
+          isOpen={!!selectedEquipmentId} 
+          onClose={() => setSelectedEquipmentId(null)} 
+          title={`Lịch sử nội bộ: ${selectedEquipmentId}`}
+      >
+             <div className="space-y-4">
+                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-xs text-blue-800 mb-2">
+                     <span className="font-bold">Lưu ý:</span> Bạn đang xem lịch sử tương tác của thiết bị này dựa trên dữ liệu bạn có quyền truy cập.
+                 </div>
+                 {selectedEquipmentId && equipmentSummaryList.find(e => e.id === selectedEquipmentId) ? (
+                     <div className="space-y-4">
+                         {equipmentSummaryList.find(e => e.id === selectedEquipmentId).logs.map((log, index) => (
+                             <div key={log.id || index} className="border rounded-xl p-4 hover:shadow-md transition bg-white relative overflow-hidden">
+                                 {/* Log Header */}
+                                 <div className="flex justify-between items-start mb-2 border-b pb-2 border-gray-100">
+                                     <div className="flex items-center gap-2">
+                                         <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                                             <CalendarDays size={14}/> {log.date}
+                                         </div>
+                                         <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                                             <Clock size={14}/> {log.shift}
+                                         </div>
+                                     </div>
+                                     <div className={`text-xs font-bold px-2 py-1 rounded uppercase ${log.status === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                         {log.status === 'CRITICAL' ? 'Có lỗi' : 'Tốt'}
+                                     </div>
+                                 </div>
+
+                                 {/* Defect Details */}
+                                 <div className="bg-gray-50 p-2 rounded-lg text-sm mb-2 border border-gray-100">
+                                     <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Chi tiết kiểm tra:</span>
+                                     <ChecklistLogDetails log={log} />
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                 ) : (
+                     <div className="text-center py-8 text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                         Bạn chưa có tương tác lịch sử trực tiếp nào với thiết bị này.
+                     </div>
+                 )}
+             </div>
+      </Modal>
+
+      {/* NEW: CHANGE PASSWORD MODAL */}
+      <Modal isOpen={showChangePassModal} onClose={() => setShowChangePassModal(false)} title="Đổi Mật khẩu Cá nhân">
+          <div className="space-y-4">
+              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-xs text-yellow-800 mb-2">
+                  <span className="font-bold">Lưu ý:</span> Sau khi đổi mật khẩu thành công, bạn sẽ sử dụng mật khẩu mới cho các lần đăng nhập sau.
+              </div>
+              
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mật khẩu hiện tại</label>
+                  <input 
+                      type="password" 
+                      className={`w-full p-3 border rounded-lg outline-none ${theme.primaryRing}`}
+                      placeholder="Nhập mật khẩu cũ..."
+                      value={passForm.current}
+                      onChange={(e) => setPassForm({...passForm, current: e.target.value})}
+                  />
+              </div>
+              
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mật khẩu mới</label>
+                  <input 
+                      type="password" 
+                      className={`w-full p-3 border rounded-lg outline-none ${theme.primaryRing}`}
+                      placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)..."
+                      value={passForm.new}
+                      onChange={(e) => setPassForm({...passForm, new: e.target.value})}
+                  />
+              </div>
+
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Xác nhận mật khẩu mới</label>
+                  <input 
+                      type="password" 
+                      className={`w-full p-3 border rounded-lg outline-none ${theme.primaryRing}`}
+                      placeholder="Nhập lại mật khẩu mới..."
+                      value={passForm.confirm}
+                      onChange={(e) => setPassForm({...passForm, confirm: e.target.value})}
+                  />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                  <button onClick={() => setShowChangePassModal(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition">Hủy</button>
+                  <button onClick={handleChangePassword} disabled={loadingAction} className={`px-4 py-2 ${theme.primaryBg} text-white rounded-lg font-bold shadow ${theme.primaryHover} transition flex items-center gap-2`}>
+                      {loadingAction ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} Cập nhật
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+    </div>
+  );
+};
+
+const EmployeeDashboard = ({ 
+    currentUser, 
+    employees, // THÊM PROPS
+    attendance, 
+    records, 
+    showToast, 
+    handleLogout, 
+    checklists, 
+    safetyReports = [], 
+    ideas = [],
+    news = [], 
+    topPerformers = [] // NEW PROP
+}) => {
+  const theme = getThemeColors(currentUser?.group, currentUser?.code); // Xác định theme
+  const [showDocCenter, setShowDocCenter] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* DOCUMENTATION CENTER */}
+      <DocumentationCenter isOpen={showDocCenter} onClose={() => setShowDocCenter(false)} />
+
+      <div className={`bg-white shadow-sm sticky top-0 z-50 px-4 py-3 flex justify-between items-center border-b-4 ${theme.border}`}>
+          <div className="flex items-center gap-3">
+             <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center text-white shadow-lg shrink-0`}>
+                <Activity size={24} />
+             </div>
+             <div>
+                <h1 className={`font-extrabold text-base leading-none ${theme.primaryTextDark}`}>H.E.R.O</h1>
+                {/* CẬP NHẬT: Hiển thị chi tiết thông tin nhân viên */}
+                <div className="flex flex-col mt-1">
+                    <span className={`text-xs font-bold uppercase leading-tight ${theme.text}`}>
+                        {currentUser?.name} <span className="opacity-75 font-normal">({currentUser?.code})</span>
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-medium leading-tight flex items-center gap-1 mt-0.5">
+                        {currentUser?.position} 
+                        {currentUser?.phone && (
+                            <>
+                                <span className="mx-1">•</span> 
+                                <span className="flex items-center gap-0.5"><Phone size={8}/> {currentUser.phone}</span>
+                            </>
+                        )}
+                    </span>
+                </div>
+             </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+             {/* NÚT HƯỚNG DẪN ? */}
+             <button
+               onClick={() => setShowDocCenter(true)}
+               className={`p-2.5 bg-white rounded-xl hover:bg-indigo-50 transition shadow border border-gray-100 active:scale-95 ${theme.primaryText}`}
+               title="Hướng dẫn sử dụng"
+             >
+               <HelpCircle size={20} />
+             </button>
+             <button 
+               onClick={handleLogout}
+               className="p-2.5 bg-white text-red-500 rounded-xl hover:bg-red-50 transition shadow border border-gray-100 active:scale-95"
+               title="Đăng xuất"
+             >
+               <LogOut size={20} />
+             </button>
+          </div>
+      </div>
+      <div className="max-w-md mx-auto px-4 mt-6">
+          <PersonalWorkspace 
+            currentUser={currentUser} 
+            employees={employees} // TRUYỀN XUỐNG PERSONAL WORKSPACE
+            attendance={attendance} 
+            records={records}
+            checklists={checklists} 
+            safetyReports={safetyReports} 
+            ideas={ideas} 
+            news={news} 
+            topPerformers={topPerformers} // TRUYỀN XUỐNG PERSONAL WORKSPACE
+            showToast={showToast} 
+          />
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// 7. ADMIN DASHBOARD (UNIFIED)
+// ==========================================
+
+const AdminDashboard = ({ 
+  currentUser, 
+  user, // <--- FIX: BỔ SUNG USER VÀO DANH SÁCH PROPS NHẬN ĐƯỢC
+  employees, attendance, safetyReports, ideas, performanceLogs, records, 
+  checklists, news, topPerformers, equipmentHealth, starVotes, // THÊM PROP: starVotes
+  showToast, handleLogout,
+  initialDetailedEmployeeId,
+  clearPendingDeepView,
+  initialGuestViewId,    // Deep link: mở ngay hồ sơ khách sau khi QR scan
+  clearPendingGuestView  // Xóa state sau khi mở
+}) => {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [empSearchTerm, setEmpSearchTerm] = useState('');
+  const [filterReset, setFilterReset] = useState(false);
+  const [showDocCenter, setShowDocCenter] = useState(false);
+  
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // --- DEEP LINKING STATE BỔ SUNG ---
+  const [detailedEmployeeId, setDetailedEmployeeId] = useState(null); // Quản lý Modal Chi tiết Nhân viên
+
+  // --- NEW STATE FOR RECORD IMPORT ---
+  const [showRecordImportModal, setShowRecordImportModal] = useState(false);
+  const [importRecordText, setImportRecordText] = useState('');
+  
+  const [resetTargetId, setResetTargetId] = useState(null);
+
+  // --- NEW STATE: AUDIT LOGS (SUPER ADMIN ONLY) ---
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditSearchTerm, setAuditSearchTerm] = useState('');
+
+  // Badge: khách chờ duyệt (for bottom nav)
+  const [pendingGuestCount, setPendingGuestCount] = useState(0);
+  React.useEffect(() => {
+    const q = query(getCollection('guests'), where('status','==','pending'));
+    const unsub = onSnapshot(q, snap => setPendingGuestCount(snap.size), () => {});
+    return () => unsub();
+  }, []);
+
+  // --- NEW STATE: SYSTEM BACKUP & RESTORE ---
+  const [showBackupModal, setShowBackupModal] = useState(false); // Dùng để bật tắt giao diện Restore (theo yêu cầu)
+  const [backupProgress, setBackupProgress] = useState('');
+  const SYSTEM_COLLECTIONS = ['employees', 'attendance', 'checklist_logs', 'safety_reports', 'ideas', 'employee_records', 'news_posts'];
+
+  // --- NEW STATE: OVERVIEW DRILL-DOWN MODAL ---
+  const [overviewModalType, setOverviewModalType] = useState(null); // 'attendance' | 'checklist' | 'safety' | 'idea' | null
+  const [selectedFeedItem, setSelectedFeedItem] = useState(null); // Để hiển thị chi tiết An Toàn/Sáng kiến
+  const [selectedChecklistLog, setSelectedChecklistLog] = useState(null); // Để hiển thị chi tiết Checklist
+
+  // --- NEW STATE: ACTIVITY FEED & COMMENTS ---
+  const [commentText, setCommentText] = useState({}); // Stores input text for each item ID
+
+  // --- NEW STATE: APPROVAL WORKFLOW (QUY TRÌNH DUYỆT TIN) ---
+  const [processItem, setProcessItem] = useState(null); // Item đang được xử lý
+  const [processType, setProcessType] = useState(''); // 'safety' | 'idea'
+  const [processAction, setProcessAction] = useState('Approved'); // 'Approved' | 'Rejected'
+  const [processFeedback, setProcessFeedback] = useState(''); // Nội dung phản hồi
+  const [processImpact, setProcessImpact] = useState('NONE'); // 'NONE' | 'POSITIVE' | 'NEGATIVE'
+
+  // --- NEW STATE: EDIT DECISION LOGIC ---
+  const [isEditingDecision, setIsEditingDecision] = useState(false); // Cờ báo hiệu đang sửa
+  const [editAuthItem, setEditAuthItem] = useState(null); // Item chờ xác thực để sửa
+  const [showEditSecurity, setShowEditSecurity] = useState(false); // Modal mật khẩu
+
+  // Record Feature State
+  const [recordSearch, setRecordSearch] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [recordContent, setRecordContent] = useState('');
+  const [rating, setRating] = useState(3); // NEW RATING STATE, default 3 (Neutral)
+  const [category, setCategory] = useState('QUALITY'); // NEW STATE: CATEGORY
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [showTrash, setShowTrash] = useState(false); 
+  const [recordImage, setRecordImage] = useState(null); // BỔ SUNG: State lưu ảnh Ghi nhận
+  
+  // NEW: History Filter & Delete State
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
+  const [deleteRecordId, setDeleteRecordId] = useState(null);
+
+  // NEW: REPORT MODULE STATE (SỬ DỤNG HÀM LOCAL TIME MỚI)
+  const [reportMode, setReportMode] = useState('MONTH'); // 'MONTH' | 'YEAR' | 'QUARTER'
+  const [reportDate, setReportDate] = useState(getLocalYYYYMM()); // YYYY-MM by default
+  const [reportGroup, setReportGroup] = useState('ALL');
+  const [reportSearchTerm, setReportSearchTerm] = useState(''); // NEW SEARCH STATE
+  const [reportTargetId, setReportTargetId] = useState(null); // ID for detail view
+  
+  // --- NEW STATE: TABS CHO BÁO CÁO KPI ---
+  const [reportTypeTab, setReportTypeTab] = useState('CMIT'); // 'CMIT' | 'ADHOC'
+
+  // --- NEW STATE: NEWS ANNOUNCEMENTS ---
+  const [newsTitle, setNewsTitle] = useState('');
+  const [newsContent, setNewsContent] = useState('');
+  const [newsType, setNewsType] = useState('INFO'); // INFO, WARNING, URGENT
+
+  // --- NEW STATE: EQUIPMENT HISTORY MODAL ---
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState(null);
+
+  // --- NEW STATE: MONITOR QUICK FILTERS ---
+  const [monitorFilter, setMonitorFilter] = useState(null); // 'FUEL' | 'ISSUES' | null
+
+  // --- THÊM STATE BỘ LỌC CA ĐIỂM DANH ---
+  const [attendanceShiftFilter, setAttendanceShiftFilter] = useState('ALL');
+
+  // --- THÊM STATE CHO TÍNH NĂNG GHI NHẬN NHANH VÀ WIZARD 5W1H ---
+  const recordInputRef = React.useRef(null);
+  const [wizardConfig, setWizardConfig] = useState({ isOpen: false, step: 0 });
+  const [wizardAnswers, setWizardAnswers] = useState(Array(6).fill(''));
+
+  // --- NEW STATE: EMPLOYEE TRANSITION / LIFECYCLE ---
+  const [showTransitionModal, setShowTransitionModal] = useState(false);
+  const [transitionEmp, setTransitionEmp] = useState(null);
+  const [transitionForm, setTransitionForm] = useState({ newGroup: '', newPosition: '', newCode: '', reason: '' });
+
+  // --- NEW STATE: BỔ SUNG STATE CHO XÁC THỰC QUẢN LÝ ---
+  const [transitionAdminPass, setTransitionAdminPass] = useState('');
+  const [resetAdminPass, setResetAdminPass] = useState('');
+  const [timelineYear, setTimelineYear] = useState(new Date().getFullYear());
+
+  // --- NEW STATE: BAN/UNBAN NHÂN VIÊN ---
+  const [showBanModal, setShowBanModal] = useState(false);
+  const [banTargetEmp, setBanTargetEmp] = useState(null);
+  const [banReason, setBanReason] = useState('');
+  const [banAdminPass, setBanAdminPass] = useState('');
+  const [banProcessing, setBanProcessing] = useState(false);
+  
+  // --- NEW STATE: TRẠNG THÁI MỞ RỘNG CHECKLIST TRONG DEEP VIEW ---
+  const [expandedDeepViewLogs, setExpandedDeepViewLogs] = useState({});
+
+  // --- NEW STATE: MODERATION TAB ---
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [promoteItem, setPromoteItem] = useState(null);
+  const [promoteTitle, setPromoteTitle] = useState('');
+  const [promoteContent, setPromoteContent] = useState('');
+  
+  // FIX CẤM WINDOW.CONFIRM: Thêm State cho các hộp thoại xác nhận tuỳ chỉnh
+  const [deleteNewsId, setDeleteNewsId] = useState(null);
+  const [showConfirmAnnounce, setShowConfirmAnnounce] = useState(false);
+
+  // --- NEW STATE: TỔNG HỢP BÁO CÁO HIỆN TRƯỜNG THEO THÁNG (TAB TRUYỀN THÔNG) ---
+  const [fieldReportMonth, setFieldReportMonth] = useState(getLocalYYYYMM()); // YYYY-MM
+  const [showFieldReportSummary, setShowFieldReportSummary] = useState(false);
+  // Lọc đa loại báo cáo (mảng các reportType được chọn, rỗng = tất cả)
+  const [fieldReportTypeFilter, setFieldReportTypeFilter] = useState([]);
+  // Các báo cáo được chọn thủ công để xuất (Set ID)
+  const [selectedFieldReportIds, setSelectedFieldReportIds] = useState(new Set());
+
+  // --- NEW EFFECT: TỰ ĐỘNG MỞ HỒ SƠ NHÂN VIÊN (DEEP VIEW) NẾU CÓ YÊU CẦU ---
+  useEffect(() => {
+      if (initialDetailedEmployeeId) {
+          setDetailedEmployeeId(initialDetailedEmployeeId);
+          // Focus vào tab Tổng quan hoặc tab Thành tích để view chuẩn
+          setActiveTab('overview');
+          if (clearPendingDeepView) clearPendingDeepView();
+      }
+  }, [initialDetailedEmployeeId, clearPendingDeepView]);
+
+  // Deep link: mở hồ sơ khách từ QR scan
+  React.useEffect(() => {
+    if (initialGuestViewId) {
+      setActiveTab('guests');
+      if (clearPendingGuestView) clearPendingGuestView();
+    }
+  }, [initialGuestViewId, clearPendingGuestView]);
+
+  // --- NEW STATE: BẢO MẬT KIỂM DUYỆT TỔNG HỢP ---
+  const [pendingModAction, setPendingModAction] = useState(null); // Lưu trữ hành động chờ xác thực: { action: 'DELETE' | 'TOGGLE_HIDE' | 'PROMOTE', item: any, extraData?: any }
+  const [showModSecurityModal, setShowModSecurityModal] = useState(false); // Bật/Tắt modal nhập Pass
+
+  // --- NEW STATE: QUY TRÌNH BÌNH BẦU NGÔI SAO MỚI ---
+  const [showStarSetupModal, setShowStarSetupModal] = useState(false);
+  const [starVoteType, setStarVoteType] = useState('MONTH'); // 'MONTH' | 'QUARTER'
+  
+  // States lưu cấu hình thời gian bầu chọn (Tách biệt với bộ lọc Báo cáo)
+  const [starSetupMonth, setStarSetupMonth] = useState(getLocalYYYYMM());
+  const [starSetupQuarter, setStarSetupQuarter] = useState(getLocalQuarter());
+  const [starSetupYear, setStarSetupYear] = useState(getLocalYear());
+
+  const [showStarVoteModal, setShowStarVoteModal] = useState(false);
+  const [starCandidates, setStarCandidates] = useState([]);
+  const [mySelections, setMySelections] = useState({}); // Lưu danh sách tick chọn: { empId: "Lý do nhận xét" }
+
+  // --- NEW EFFECT: RESET BỘ PHẬN KHI ĐỔI TAB KPI ---
+  useEffect(() => {
+      setReportGroup('ALL');
+  }, [reportTypeTab]);
+
+  // --- NEW EFFECT: RESET TIMELINE YEAR & EXPANDED LOGS KHI ĐỔI NHÂN VIÊN ---
+  useEffect(() => {
+      if (detailedEmployeeId) {
+          setTimelineYear(new Date().getFullYear());
+          setExpandedDeepViewLogs({}); // Reset lại trạng thái mở rộng khi xem người khác
+      }
+  }, [detailedEmployeeId]);
+
+  // --- NEW EFFECT: FETCH AUDIT LOGS (SUPER ADMIN ONLY) ---
+  useEffect(() => {
+      // FIX: Thêm điều kiện 'user' (Firebase Auth) phải tồn tại thì mới cho phép query
+      // Nếu không có 'user', query sẽ bị lỗi "Missing or insufficient permissions"
+      if (currentUser?.id === 'SUPER_ADMIN' && activeTab === 'audit_logs' && user) {
+          const q = query(getCollection('system_audit'), orderBy('timestamp', 'desc'), limit(200));
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+              const logs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+              setAuditLogs(logs);
+          }, (error) => {
+              console.error("Audit Log Fetch Error:", error);
+              // Chỉ báo lỗi nếu thực sự là lỗi mạng hoặc logic, bỏ qua lỗi permission tạm thời khi đang chuyển auth
+              if (error.code !== 'permission-denied') {
+                  showToast("Không thể tải nhật ký hệ thống!", "error");
+              }
+          });
+          return () => unsubscribe();
+      }
+  }, [currentUser, activeTab, user]); // FIX: Thêm 'user' vào dependency để re-run khi Auth sẵn sàng
+
+  // Logic Auto-focus khi mở form Ghi nhận
+  useEffect(() => {
+      if (activeTab === 'record' && selectedEmployee) {
+          // Delay nhỏ để đợi animation slide-up của UI hoàn tất
+          setTimeout(() => {
+              recordInputRef.current?.focus();
+          }, 300);
+      }
+  }, [activeTab, selectedEmployee]);
+
+  const WIZARD_QUESTIONS_RECORD = [
+      { title: 'WHAT - Sự việc gì?', desc: 'Mô tả ngắn gọn hành vi / sự việc cần ghi nhận.' },
+      { title: 'WHERE - Ở đâu?', desc: 'Khu vực, thiết bị hoặc quy trình liên quan.' },
+      { title: 'WHEN - Khi nào?', desc: 'Thời gian, Ca làm việc xảy ra sự việc.' },
+      { title: 'WHO - Ai liên quan?', desc: 'Cá nhân được ghi nhận và những người chứng kiến.' },
+      { title: 'WHY - Tại sao?', desc: 'Nguyên nhân dẫn đến hành vi / sự việc này.' },
+      { title: 'HOW - Đánh giá / Hậu quả?', desc: 'Mức độ ảnh hưởng và kết luận xử lý.' }
+  ];
+
+  const openWizard = () => {
+      setWizardConfig({ isOpen: true, step: 0 });
+      setWizardAnswers(Array(6).fill(''));
+  };
+
+  const closeWizard = () => {
+      setWizardConfig({ isOpen: false, step: 0 });
+  };
+
+  const nextWizardStep = () => {
+      if (wizardConfig.step < 5) {
+          setWizardConfig(prev => ({ ...prev, step: prev.step + 1 }));
+      } else {
+          const labels = ['Sự việc (What)', 'Địa điểm (Where)', 'Thời gian (When)', 'Liên quan (Who)', 'Nguyên nhân (Why)', 'Đánh giá (How)'];
+          let result = `[GHI NHẬN 5W1H]\n`;
+          wizardAnswers.forEach((ans, idx) => {
+              if(ans.trim()) result += `- ${labels[idx]}: ${ans.trim()}\n`;
+          });
+          
+          setRecordContent(prev => prev ? prev + '\n\n' + result : result);
+          closeWizard();
+          showToast("Đã chèn nội dung từ Trợ lý 5W1H!");
+          // Tự động focus lại sau khi chèn xong
+          setTimeout(() => recordInputRef.current?.focus(), 100);
+      }
+  };
+
+  const prevWizardStep = () => {
+      if (wizardConfig.step > 0) {
+          setWizardConfig(prev => ({ ...prev, step: prev.step - 1 }));
+      }
+  };
+
+  const handleWizardInput = (val) => {
+      const newAns = [...wizardAnswers];
+      newAns[wizardConfig.step] = val;
+      setWizardAnswers(newAns);
+  };
+
+  // --- NEW FUNCTION: HANDLE EMPLOYEE TRANSITION (PROMOTION / TRANSFER) ---
+  const handleEmployeeTransition = async () => {
+      if (!transitionEmp || !transitionForm.newGroup || !transitionForm.newPosition) {
+          return showToast("Vui lòng điền đủ thông tin bắt buộc!", "error");
+      }
+      
+      if (!transitionAdminPass) return showToast("Vui lòng nhập mật khẩu xác nhận!", "warning");
+
+      // XÁC THỰC MẬT KHẨU QUẢN LÝ
+      const isSuperAdmin = currentUser.id === 'SUPER_ADMIN';
+      const isValidPass = isSuperAdmin 
+          ? (transitionAdminPass === '15061990' || transitionAdminPass === 'tsv') 
+          : (transitionAdminPass === currentUser.password);
+      
+      if (!isValidPass) {
+          return showToast("Mật khẩu Quản lý không chính xác!", "error");
+      }
+
+      setIsProcessing(true);
+      try {
+          const batch = writeBatch(db);
+          const oldCode = transitionEmp.code;
+          const newCode = transitionForm.newCode ? transitionForm.newCode.trim().toUpperCase() : oldCode;
+          const isCodeChanged = oldCode !== newCode;
+
+          const newTimelineEntry = {
+              date: getCurrentDate(),
+              timestamp: Date.now(),
+              fromGroup: transitionEmp.group,
+              toGroup: transitionForm.newGroup,
+              fromPosition: transitionEmp.position,
+              toPosition: transitionForm.newPosition,
+              type: isCodeChanged ? 'CONVERSION' : 'TRANSFER/PROMOTION',
+              reason: transitionForm.reason || ''
+          };
+
+          const updatedTimeline = [...(transitionEmp.careerTimeline || []), newTimelineEntry];
+
+          const updatedEmpData = {
+              ...transitionEmp,
+              code: newCode,
+              group: transitionForm.newGroup,
+              position: transitionForm.newPosition,
+              careerTimeline: updatedTimeline,
+              id: newCode // ID trong hệ thống hiện tại là Code
+          };
+
+          if (isCodeChanged) {
+              // 1. Tạo bản ghi nhân viên mới
+              const newEmpRef = getDocRef('employees', newCode);
+              batch.set(newEmpRef, updatedEmpData);
+              
+              // 2. Xoá bản ghi cũ
+              const oldEmpRef = getDocRef('employees', transitionEmp.id);
+              batch.delete(oldEmpRef);
+
+              // 3. Cập nhật hàng loạt (Batch update) cho employee_records
+              const recordsQuery = query(getCollection('employee_records'), where('targetId', '==', transitionEmp.id));
+              const recordsSnap = await getDocs(recordsQuery);
+              recordsSnap.docs.forEach(docSnap => {
+                  batch.update(docSnap.ref, {
+                      targetId: newCode,
+                      targetCode: newCode,
+                      targetGroup: transitionForm.newGroup
+                  });
+              });
+          } else {
+              // Nếu không đổi mã, chỉ cập nhật doc hiện tại
+              const empRef = getDocRef('employees', transitionEmp.id);
+              batch.update(empRef, {
+                  group: transitionForm.newGroup,
+                  position: transitionForm.newPosition,
+                  careerTimeline: updatedTimeline
+              });
+          }
+
+          await batch.commit();
+
+          // Ghi Audit Log cho hệ thống
+          await createAuditLog('EMPLOYEE_TRANSITION', currentUser, newCode, {
+              oldCode, newCode,
+              oldGroup: transitionEmp.group, newGroup: transitionForm.newGroup,
+              reason: transitionForm.reason
+          });
+
+          showToast("Đã cập nhật Trạng thái/Bộ phận nhân viên thành công!");
+          setShowTransitionModal(false);
+          setTransitionEmp(null);
+          setTransitionForm({ newGroup: '', newPosition: '', newCode: '', reason: '' });
+          setTransitionAdminPass(''); // Xóa password sau khi xong
+      } catch (e) {
+          console.error(e);
+          showToast("Lỗi khi xử lý chuyển giao nhân sự!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- FUNCTION: HANDLE SYSTEM BACKUP ---
+  const handleSystemBackup = async () => {
+      setIsProcessing(true);
+      setBackupProgress('Đang tổng hợp dữ liệu...');
+      try {
+          const fullBackup = {
+            _meta: {
+              version: '1.0',
+              appId,
+              exportedAt: new Date().toISOString(),
+              exportedBy: currentUser?.name || 'Admin',
+              collections: SYSTEM_COLLECTIONS
+            }
+          };
+          
+          // Fetch all collections in parallel
+          const promises = SYSTEM_COLLECTIONS.map(async (colName) => {
+              setBackupProgress(`Đang tải: ${colName}...`);
+              const snapshot = await getDocs(query(getCollection(colName)));
+              return {
+                  name: colName,
+                  data: snapshot.docs.map(d => ({ ...d.data(), id: d.id }))
+              };
+          });
+
+          const results = await Promise.all(promises);
+          results.forEach(res => { fullBackup[res.name] = res.data; });
+
+          // Create JSON file
+          const dataStr = JSON.stringify(fullBackup, null, 2);
+          const blob = new Blob([dataStr], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          
+          // Trigger download
+          const link = document.createElement('a');
+          link.href = url;
+          const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+          link.download = `HERO_Backup_${today}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url); // FIX: Giải phóng bộ nhớ sau khi download
+          
+          const totalDocs = results.reduce((sum, r) => sum + r.data.length, 0);
+          showToast(`✅ Đã sao lưu ${totalDocs} bản ghi (${(dataStr.length/1024).toFixed(1)} KB)`);
+      } catch (e) {
+          console.error("Backup Error:", e);
+          showToast("Lỗi khi sao lưu dữ liệu!", "error");
+      } finally {
+          setIsProcessing(false);
+          setBackupProgress('');
+      }
+  };
+
+  // --- FUNCTION: HANDLE SYSTEM RESTORE ---
+  // FIX: Bảo vệ dữ liệu thủ công của nhân viên khi restore từ backup
+  const handleSystemRestore = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      setIsProcessing(true);
+      setBackupProgress('Đang đọc file...');
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+          try {
+              const content = event.target.result;
+              const backupData = JSON.parse(content);
+              
+              // Validate keys
+              const keys = Object.keys(backupData);
+              const isValid = keys.some(k => SYSTEM_COLLECTIONS.includes(k));
+              if (!isValid) throw new Error("File không đúng định dạng backup hệ thống!");
+
+              // FIX: Lấy snapshot nhân viên hiện tại để bảo vệ dữ liệu thủ công
+              setBackupProgress('Đang đọc dữ liệu nhân viên hiện tại...');
+              const existingEmployeesSnap = await getDocs(getCollection('employees'));
+              const existingEmployeesMap = {};
+              existingEmployeesSnap.docs.forEach(d => {
+                existingEmployeesMap[d.id] = d.data();
+              });
+
+              // Các trường thủ công của nhân viên KHÔNG được ghi đè khi restore
+              const EMPLOYEE_MANUAL_FIELDS_RESTORE = ['avatar', 'phone', 'routeLine', 'commuteMethod', 'password', 'email', 'isFirstLogin', 'resetRequested', 'careerTimeline'];
+
+              let totalRestored = 0;
+              const CHUNK_SIZE = 400;
+
+              for (const colName of keys) {
+                  if (!SYSTEM_COLLECTIONS.includes(colName)) continue;
+                  
+                  const items = backupData[colName];
+                  if (!Array.isArray(items)) continue;
+
+                  setBackupProgress(`Đang khôi phục: ${colName} (${items.length} bản ghi)...`);
+                  
+                  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+                      const chunk = items.slice(i, i + CHUNK_SIZE);
+                      const batch = writeBatch(db);
+
+                      chunk.forEach(item => {
+                          if (!item.id) return;
+                          const ref = getDocRef(colName, item.id);
+
+                          if (colName === 'employees') {
+                              // FIX: Với nhân viên, bảo vệ dữ liệu thủ công
+                              const existing = existingEmployeesMap[item.id];
+                              let itemToRestore = { ...item };
+                              
+                              if (existing) {
+                                  // Giữ lại các trường thủ công nếu đang có giá trị hợp lệ
+                                  EMPLOYEE_MANUAL_FIELDS_RESTORE.forEach(field => {
+                                      if (existing[field] !== undefined && existing[field] !== null && existing[field] !== '') {
+                                          itemToRestore[field] = existing[field];
+                                      }
+                                  });
+                              }
+                              batch.set(ref, itemToRestore, { merge: true });
+                          } else {
+                              // Các collection khác: restore bình thường
+                              batch.set(ref, item, { merge: true });
+                          }
+                      });
+
+                      await batch.commit();
+                  }
+                  totalRestored += items.length;
+              }
+
+              showToast(`✅ Đã khôi phục ${totalRestored} bản ghi. Dữ liệu thủ công NV được bảo toàn!`);
+              setShowBackupModal(false);
+          } catch (err) {
+              console.error("Restore Error:", err);
+              showToast("Lỗi khôi phục: " + err.message, "error");
+          } finally {
+              setIsProcessing(false);
+              setBackupProgress('');
+              e.target.value = ''; // Reset input
+          }
+      };
+      reader.onerror = () => {
+          showToast("Không đọc được file!", "error");
+          setIsProcessing(false);
+          setBackupProgress('');
+      };
+      reader.readAsText(file);
+  };
+
+  // --- BƯỚC 1: LOGIC LỌC DỮ LIỆU ĐIỂM DANH (LIVE ATTENDANCE) ---
+  const todayCheckins = useMemo(() => {
+      const today = getCurrentDate();
+      // Lọc các bản ghi có date trùng hôm nay & Sắp xếp mới nhất lên đầu
+      return attendance
+        .filter(a => a.date === today)
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [attendance]);
+
+  // --- THÊM: LOGIC LỌC ĐIỂM DANH THEO CA ---
+  const filteredCheckins = useMemo(() => {
+      if (attendanceShiftFilter === 'ALL') return todayCheckins;
+      return todayCheckins.filter(log => log.shift === attendanceShiftFilter);
+  }, [todayCheckins, attendanceShiftFilter]);
+
+  // --- HELPER: GET REPORTER INFO ---
+  // Tìm thông tin chi tiết nhân viên từ ID để hiển thị (SĐT, Mã NV)
+  const getReporterInfo = (reporterId) => {
+      const emp = employees.find(e => e.id === reporterId);
+      return emp || { name: 'Unknown', code: '---', phone: '' };
+  };
+
+  // --- NEW LOGIC: ACTIVITY FEED MEMO ---
+  const activityFeed = useMemo(() => {
+      const safety = safetyReports.map(r => ({...r, type: 'SAFETY'}));
+      const idea = ideas.map(i => ({...i, type: 'IDEA'}));
+      return [...safety, ...idea]
+          .filter(item => !item.isHidden) // CHỈ HIỂN THỊ CÁC BÀI CHƯA BỊ ẨN
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [safetyReports, ideas]);
+
+  // CẬP NHẬT: TỔNG HỢP TOÀN BỘ NỘI DUNG VÀO TAB KIỂM DUYỆT
+  const moderationFeed = useMemo(() => {
+      const safety = safetyReports.map(r => ({...r, feedType: 'SAFETY', unifiedEmpId: r.employeeId }));
+      const idea = ideas.map(i => ({...i, feedType: 'IDEA', unifiedEmpId: i.employeeId }));
+      const check = checklists.map(c => ({
+          ...c, 
+          feedType: 'CHECKLIST', 
+          unifiedEmpId: c.reporterId, 
+          content: `[KIỂM TRA THIẾT BỊ: ${c.equipmentId}]\n- Loại: ${c.type}\n- Ca làm việc: ${c.shift}\n- Trạng thái tổng quan: ${c.status === 'CRITICAL' ? 'CÓ LỖI (STOP WORK)' : 'TỐT'}\n- Nhiên liệu: ${c.fuel || '--'}%` 
+      }));
+      const att = attendance.map(a => ({
+          ...a, 
+          feedType: 'ATTENDANCE', 
+          unifiedEmpId: a.employeeId, 
+          content: `[ĐIỂM DANH]\n- Ca làm việc: ${a.shift}\n- Lúc: ${a.time}` 
+      }));
+
+      return [...safety, ...idea, ...check, ...att].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [safetyReports, ideas, checklists, attendance]);
+
+  // --- MODERATION HANDLERS VỚI SECURITY MODAL ---
+  const triggerModAction = (actionType, item, extraData = null) => {
+      setPendingModAction({ action: actionType, item, extraData });
+      setShowModSecurityModal(true); // Yêu cầu nhập Pass
+  };
+
+  const executeModAction = async () => {
+      if (!pendingModAction) return;
+      const { action, item, extraData } = pendingModAction;
+      setIsProcessing(true);
+
+      try {
+          // Xác định collection tương ứng
+          let colName = '';
+          if (item.feedType === 'SAFETY') colName = 'safety_reports';
+          else if (item.feedType === 'IDEA') colName = 'ideas';
+          else if (item.feedType === 'CHECKLIST') colName = 'checklist_logs';
+          else if (item.feedType === 'ATTENDANCE') colName = 'attendance';
+
+          if (action === 'DELETE') {
+              await deleteDoc(getDocRef(colName, item.id));
+              showToast("Đã xóa vĩnh viễn nội dung khỏi hệ thống!");
+          } else if (action === 'TOGGLE_HIDE') {
+              const newStatus = !item.isHidden;
+              await updateDoc(getDocRef(colName, item.id), { isHidden: newStatus });
+              showToast(newStatus ? "Đã ẩn nội dung khỏi Bảng tin chung!" : "Đã khôi phục hiển thị trên Bảng tin!");
+          } else if (action === 'PROMOTE') {
+              await addDoc(getCollection('news_posts'), {
+                  title: extraData.title.trim(),
+                  content: extraData.content.trim(),
+                  type: 'INFO',
+                  authorId: currentUser.id,
+                  authorName: currentUser.name,
+                  authorGroup: currentUser.group,
+                  date: getCurrentDate(),
+                  timestamp: Date.now()
+              });
+              showToast("Đã đưa nội dung lên Bảng tin Truyền thông!");
+              setShowPromoteModal(false);
+          }
+
+          // Lưu Log hành động của Quản lý
+          await createAuditLog(`MODERATION_${action}`, currentUser, item.id, { 
+              feedType: item.feedType, 
+              originalContent: item.content,
+              reason: 'Manager verified moderation action' 
+          });
+
+      } catch (e) {
+          console.error("Moderation Error:", e);
+          showToast("Lỗi xử lý kiểm duyệt", "error");
+      } finally {
+          setIsProcessing(false);
+          setPendingModAction(null);
+          setShowModSecurityModal(false);
+      }
+  };
+
+  const openPromoteModal = (item) => {
+      setPromoteItem(item);
+      
+      let typeLabel = "Hoạt động";
+      if(item.feedType === 'SAFETY') typeLabel = "Báo cáo An toàn";
+      if(item.feedType === 'IDEA') typeLabel = "Sáng kiến Kaizen";
+      if(item.feedType === 'CHECKLIST') typeLabel = "Kỹ năng Kiểm tra Thiết bị";
+      if(item.feedType === 'ATTENDANCE') typeLabel = "Sự Chuyên cần";
+
+      setPromoteTitle(`[TUYÊN DƯƠNG] ${typeLabel}`);
+      const authorName = employees.find(e => e.id === item.unifiedEmpId)?.name || 'Nhân viên';
+      setPromoteContent(`Ban Quản lý xin biểu dương tinh thần tích cực sau:\n\n"${item.content}"\n\n- Ghi nhận từ: ${authorName}`);
+      setShowPromoteModal(true);
+  };
+
+  const handlePromoteToNewsSubmit = () => {
+      if (!promoteTitle.trim() || !promoteContent.trim()) return showToast("Vui lòng nhập đủ thông tin!", "warning");
+      // Thay vì chạy luôn, gọi trigger mở Security Modal
+      triggerModAction('PROMOTE', promoteItem, { title: promoteTitle, content: promoteContent });
+  };
+
+  // --- HÀM POST BẢN TIN ---
+  const handlePostNews = async () => {
+      if (!newsTitle.trim() || !newsContent.trim()) {
+          showToast("Vui lòng nhập đầy đủ Tiêu đề và Nội dung!", "error");
+          return;
+      }
+      setIsProcessing(true);
+      try {
+          await addDoc(getCollection('news_posts'), {
+              title: newsTitle.trim(),
+              content: newsContent.trim(),
+              type: newsType,
+              authorId: currentUser.id,
+              authorName: currentUser.name,
+              authorGroup: currentUser.group,
+              date: getCurrentDate(),
+              timestamp: Date.now()
+          });
+          setNewsTitle('');
+          setNewsContent('');
+          setNewsType('INFO');
+          showToast("Đã đăng bản tin thành công!");
+      } catch (error) {
+          console.error(error);
+          showToast("Lỗi khi đăng tin!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleDeleteNews = (id) => {
+      // Mở Modal thay vì dùng window.confirm
+      setDeleteNewsId(id);
+  };
+
+  const confirmDeleteNews = async () => {
+      if (!deleteNewsId) return;
+      setIsProcessing(true);
+      try {
+          await deleteDoc(getDocRef('news_posts', deleteNewsId));
+          showToast("Đã xóa bản tin.");
+          setDeleteNewsId(null);
+      } catch (e) {
+          showToast("Lỗi khi xóa bản tin!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- NEW: XUẤT PDF TỔNG HỢP BÁO CÁO HIỆN TRƯỜNG - DẠNG TỜ BÁO A4 (FULL WIDTH & HIGHLIGHT) ---
+  const handleExportFieldReportSummary = async (reportsToExport) => {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+          showToast("PDF Engine dang tai, vui long thu lai!", "warning");
+          return;
+      }
+      if (!reportsToExport || reportsToExport.length === 0) {
+          showToast("Khong co bao cao nao duoc chon!", "warning");
+          return;
+      }
+      setIsProcessing(true);
+
+      // HELPER: Lọc triệt để Tiếng Việt có dấu và Ký tự đặc biệt (Emoji) để tránh lỗi font JS PDF
+      const sanitizeTextForPDF = (str) => {
+          if (!str) return '';
+          return String(str)
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "") // Xóa dấu tiếng Việt
+              .replace(/đ/g, "d").replace(/Đ/g, "D")
+              .replace(/[^\x20-\x7E\n]/g, "") // CHỈ GIỮ LẠI ASCII cơ bản & Xuống dòng (Xóa sạch mọi Emoji, icon lạ)
+              .trim();
+      };
+
+      try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const pageW = 210;
+          const pageH = 297;
+          const mL = 10; 
+          const mR = 10; 
+          // Chiều rộng sử dụng toàn bộ trang giấy (1 cột)
+          const colW = pageW - mL - mR;
+
+          const [yyyy, mm] = (fieldReportMonth || getLocalYYYYMM()).split('-');
+          const monthLabel = `Thang ${mm} Nam ${yyyy}`;
+          const safeExporter = sanitizeTextForPDF(currentUser.name);
+          const exportDateStr = new Date().toLocaleDateString('vi-VN');
+          const totalImgs = reportsToExport.reduce((s, r) => s + (r.images ? r.images.length : (r.image ? 1 : 0)), 0);
+          const riskCount = reportsToExport.filter(r => r.isSafetyRisk).length;
+
+          // ─── STATE THEO DÕI VỊ TRÍ ───
+          let pageNum = 1;
+          let currentY = 0;
+          const HEADER_H = 28; 
+          const FOOTER_H = 8;
+          const BODY_TOP = HEADER_H + 4;
+          const BODY_BOTTOM = pageH - FOOTER_H - 2;
+
+          const drawNewspaperHeader = () => {
+              doc.setDrawColor('#1e3a8a');
+              doc.setLineWidth(1.2);
+              doc.line(mL, 8, pageW - mR, 8);
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(20);
+              doc.setTextColor('#0f172a');
+              doc.text('HERO FIELD REPORT', pageW / 2, 18, { align: 'center' });
+              doc.setFont('helvetica', 'italic');
+              doc.setFontSize(7);
+              doc.setTextColor('#64748b');
+              doc.text('He thong Tong hop Bao cao Hien truong Quan ly - CMIT', pageW / 2, 22.5, { align: 'center' });
+              doc.setDrawColor('#1e3a8a');
+              doc.setLineWidth(0.4);
+              doc.line(mL, 24, pageW - mR, 24);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(6.5);
+              doc.setTextColor('#374151');
+              doc.text(`${monthLabel}`, mL, 28);
+              doc.text(`Tong: ${reportsToExport.length} bao cao  |  ${totalImgs} hinh anh  |  ${riskCount > 0 ? riskCount + ' RUI RO' : 'Khong co rui ro'}`, pageW / 2, 28, { align: 'center' });
+              doc.text(`Xuat: ${exportDateStr}  Boi: ${safeExporter}`, pageW - mR, 28, { align: 'right' });
+              doc.setDrawColor('#cbd5e1');
+              doc.setLineWidth(0.3);
+              doc.line(mL, 30, pageW - mR, 30);
+          };
+
+          const drawContinuationHeader = () => {
+              doc.setDrawColor('#1e3a8a');
+              doc.setLineWidth(0.6);
+              doc.line(mL, 7, pageW - mR, 7);
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(8);
+              doc.setTextColor('#1e3a8a');
+              doc.text('HERO FIELD REPORT', mL, 12);
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(6.5);
+              doc.setTextColor('#64748b');
+              doc.text(`${monthLabel}  |  Trang ${pageNum}`, pageW - mR, 12, { align: 'right' });
+              doc.setDrawColor('#cbd5e1');
+              doc.setLineWidth(0.2);
+              doc.line(mL, 14, pageW - mR, 14);
+          };
+
+          const drawFooter = () => {
+              doc.setDrawColor('#e2e8f0');
+              doc.setLineWidth(0.3);
+              doc.line(mL, pageH - FOOTER_H, pageW - mR, pageH - FOOTER_H);
+              doc.setFont('helvetica', 'italic');
+              doc.setFontSize(5.5);
+              doc.setTextColor('#94a3b8');
+              doc.text(`HERO CMIT System  |  Tong hop Bao cao Hien truong  |  ${monthLabel}  |  Trang ${pageNum}`, pageW / 2, pageH - FOOTER_H + 4, { align: 'center' });
+          };
+
+          const newPage = () => {
+              drawFooter();
+              doc.addPage();
+              pageNum++;
+              currentY = BODY_TOP + (pageNum === 1 ? 4 : 2);
+              drawContinuationHeader();
+          };
+
+          const ensureSpace = (needed) => {
+              if (currentY + needed > BODY_BOTTOM) {
+                  newPage();
+              }
+          };
+
+          // HÀM HELPER: Vẽ text và Tự động bôi đỏ đậm cụm từ "MAT AN TOAN"
+          const drawRichTextLine = (textLine, x, y, defaultColor) => {
+              // Tách chuỗi theo từ khóa (Không phân biệt hoa/thường)
+              const parts = textLine.split(/(MAT AN TOAN)/gi);
+              let currX = x;
+              parts.forEach(part => {
+                  if (!part) return;
+                  if (part.toUpperCase() === 'MAT AN TOAN') {
+                      doc.setFont('helvetica', 'bold');
+                      doc.setTextColor('#dc2626'); // Màu đỏ (Red-600)
+                  } else {
+                      doc.setFont('helvetica', 'normal');
+                      doc.setTextColor(defaultColor);
+                  }
+                  doc.text(part, currX, y);
+                  currX += doc.getTextWidth(part);
+              });
+          };
+
+          drawNewspaperHeader();
+          currentY = BODY_TOP + 4;
+
+          reportsToExport.forEach((report, idx) => {
+              const author = employees.find(e => e.id === report.employeeId);
+              const authorName = sanitizeTextForPDF(author ? author.name : (report.employeeId || 'Unknown'));
+              const authorGroup = sanitizeTextForPDF(author ? (author.group || '') : '');
+              const reportDate = sanitizeTextForPDF(report.date || (report.timestamp ? new Date(report.timestamp).toLocaleDateString('vi-VN') : ''));
+              const reportTypeLabel = sanitizeTextForPDF(report.reportType || 'Bao cao');
+              const rawContent = sanitizeTextForPDF(report.content || '');
+              const images = report.images || (report.image ? [{ src: report.image, caption: '' }] : []);
+              const hasRisk = report.isSafetyRisk;
+
+              const headerH = 7.5;
+              ensureSpace(headerH + 10);
+              const cx = mL;
+
+              if (hasRisk) {
+                  doc.setFillColor('#fff1f2');
+                  doc.setDrawColor('#ef4444');
+              } else {
+                  doc.setFillColor('#eff6ff');
+                  doc.setDrawColor('#93c5fd');
+              }
+              doc.setLineWidth(0.3);
+              doc.rect(cx, currentY, colW, headerH, 'FD');
+
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(8);
+              if (hasRisk) doc.setTextColor('#dc2626'); else doc.setTextColor('#1e3a8a');
+              
+              doc.text(`${String(idx + 1).padStart(2,'0')}. ${reportTypeLabel}${hasRisk ? '  [! RUI RO]' : ''}`, cx + 3, currentY + 4.8);
+
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(6);
+              doc.setTextColor('#6b7280');
+              const authorStr = `${authorName}${authorGroup ? ' (' + authorGroup + ')' : ''}  |  ${reportDate}`;
+              doc.text(authorStr, cx + colW - 3, currentY + 4.8, { align: 'right' });
+
+              currentY += headerH + 2.5;
+
+              const textFontSize = 7.5;
+              const lineH = 4.2;
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(textFontSize);
+              
+              // Tính toán chiều dài để tự động ngắt dòng vừa khổ giấy
+              const allLines = doc.splitTextToSize(rawContent, colW - 6);
+              const textColor = hasRisk ? '#b91c1c' : '#1f2937';
+
+              if (images.length === 0) {
+                  allLines.forEach(line => {
+                      ensureSpace(lineH + 1);
+                      drawRichTextLine(line, mL + 1, currentY, textColor);
+                      currentY += lineH;
+                  });
+              } else {
+                  // In vài dòng đầu trước khi in ảnh
+                  const leadLines = allLines.slice(0, 3);
+                  const restLines = allLines.slice(3);
+
+                  leadLines.forEach(line => {
+                      ensureSpace(lineH + 1);
+                      drawRichTextLine(line, mL + 1, currentY, textColor);
+                      currentY += lineH;
+                  });
+
+                  // ─── DÀN TRANG ẢNH THEO CHIỀU NGANG FULL WIDTH ───
+                  const imgCount = images.length;
+                  if (imgCount > 0) {
+                      let colsPerRow = 3; 
+                      // Chia tự động kích thước ảnh dựa trên số lượng ảnh
+                      let iw = (colW - 8) / 3; 
+                      let ih = iw * 0.75; // Tỉ lệ 4:3
+
+                      if (imgCount === 1) {
+                          colsPerRow = 1;
+                          iw = 90; // Ảnh đơn thì giới hạn độ rộng vừa phải cho đẹp
+                          ih = 67.5; 
+                      } else if (imgCount === 2 || imgCount === 4) {
+                          colsPerRow = 2; // Cân đối 2 hoặc 4 ảnh chia làm 2 cột
+                          iw = (colW - 6) / 2;
+                          ih = iw * 0.75;
+                      }
+                      
+                      ensureSpace(3);
+                      currentY += 2;
+
+                      for (let i = 0; i < imgCount; i += colsPerRow) {
+                          const rowImgs = images.slice(i, i + colsPerRow);
+                          const needsCaptionSpace = rowImgs.some(img => img && img.caption);
+                          const rowNeededSpace = ih + (needsCaptionSpace ? 5 : 2);
+                          
+                          ensureSpace(rowNeededSpace + 2); 
+                          let imgCurX = mL + 1;
+
+                          rowImgs.forEach(imgData => {
+                              const src = imgData.src || imgData;
+                              const imgY = currentY;
+                              if (src) {
+                                  try {
+                                      const fmt = typeof src === 'string' && src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+                                      doc.addImage(src, fmt, imgCurX, imgY, iw, ih);
+                                      doc.setDrawColor('#cbd5e1');
+                                      doc.setLineWidth(0.2);
+                                      doc.rect(imgCurX, imgY, iw, ih, 'S');
+                                  } catch(e) {
+                                      doc.setFillColor('#f1f5f9');
+                                      doc.setDrawColor('#cbd5e1');
+                                      doc.rect(imgCurX, imgY, iw, ih, 'FD');
+                                      doc.setFontSize(6);
+                                      doc.setTextColor('#94a3b8');
+                                      doc.text('[Loi anh]', imgCurX + iw/2, imgY + ih/2, { align:'center' });
+                                  }
+                                  
+                                  const cap = imgData.caption ? sanitizeTextForPDF(imgData.caption) : '';
+                                  if (cap) {
+                                      doc.setFontSize(5.5);
+                                      doc.setFont('helvetica', 'italic');
+                                      doc.setTextColor('#6b7280');
+                                      const maxCapLen = iw > 40 ? 60 : 30; 
+                                      const capShort = cap.length > maxCapLen ? cap.substring(0, maxCapLen-2) + '..' : cap;
+                                      doc.text(capShort, imgCurX + iw/2, imgY + ih + 3.5, { align:'center' });
+                                  }
+                              }
+                              imgCurX += iw + 2; // Khoảng cách giữa các ảnh
+                          });
+
+                          currentY += rowNeededSpace;
+                      }
+                      currentY += 2;
+                  }
+
+                  // In nốt đoạn text còn lại
+                  doc.setFontSize(textFontSize);
+                  restLines.forEach(line => {
+                      ensureSpace(lineH + 1);
+                      drawRichTextLine(line, mL + 1, currentY, textColor);
+                      currentY += lineH;
+                  });
+              }
+
+              // Divider giữa các báo cáo
+              ensureSpace(5);
+              doc.setDrawColor('#e2e8f0');
+              doc.setLineWidth(0.3);
+              doc.line(mL, currentY + 2, mL + colW, currentY + 2);
+              currentY += 6;
+          });
+
+          drawFooter();
+
+          const fileName = `HeroFieldReport_${fieldReportMonth || getLocalYYYYMM()}.pdf`;
+          doc.save(fileName);
+          showToast(`Da xuat PDF to bao: ${reportsToExport.length} bao cao!`);
+      } catch(e) {
+          console.error('Export Field Report PDF Error:', e);
+          showToast('Loi xuat PDF bao cao!', 'error');
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- NEW LOGIC: POST COMMENT ---
+  const handlePostComment = async (item, text) => {
+      if (!text || !text.trim()) return;
+      
+      // FIX: Phân biệt collection chính xác - hỗ trợ cả items có .type (activityFeed) và raw items (overview modal)
+      const isSafetyReport = item.type === 'SAFETY' || item.severity !== undefined || item.reportType !== undefined || item.isSafetyRisk === true;
+      const collectionName = isSafetyReport ? 'safety_reports' : 'ideas';
+      const newComment = {
+          authorId: currentUser.id,
+          authorName: currentUser.name,
+          content: text.trim(),
+          timestamp: Date.now()
+      };
+
+      try {
+          await updateDoc(getDocRef(collectionName, item.id), {
+              comments: arrayUnion(newComment)
+          });
+          // Clear input for this specific item
+          setCommentText(prev => ({ ...prev, [item.id]: '' }));
+          showToast("Đã gửi bình luận!");
+      } catch (e) {
+          console.error("Comment Error:", e);
+          showToast("Lỗi gửi bình luận!", "error");
+      }
+  };
+
+  // --- NEW LOGIC: CHECKLIST MONITOR DATA ---
+  // 1. Lọc các vấn đề nghiêm trọng trong 24h qua
+  const criticalIssues = useMemo(() => {
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      return checklists.filter(log => { // DÙNG checklists
+          const isRecent = (now - (log.timestamp || 0)) < oneDay;
+          if (!isRecent) return false;
+
+          // Check header status
+          if (log.status === 'CRITICAL') return true;
+
+          // Check items inside
+          if (log.data) {
+              return Object.values(log.data).some(item => item.status === 'CRITICAL' || item.status === 'WARNING');
+          }
+          return false;
+      });
+  }, [checklists]); // CẬP NHẬT DEPENDENCY
+
+  // 2. Lấy log mới nhất của từng thiết bị để làm Dashboard Nhiên liệu
+  const latestLogs = useMemo(() => {
+      const unique = {};
+      checklists.forEach(log => {
+          if (!unique[log.equipmentId]) {
+              unique[log.equipmentId] = log;
+          }
+      });
+      // Sort theo thứ tự: QC > RTG > RS/LRS/EH/UN > FL > TT > Pickup > Khác
+      const getTypeOrder = (id) => {
+          if (/^QC/i.test(id)) return 0;
+          if (/^RTG/i.test(id)) return 1;
+          if (/^(RS|LRS|EH|UN)/i.test(id)) return 2;
+          if (/^FL/i.test(id)) return 3;
+          if (/^TT/i.test(id)) return 4;
+          if (/^(PU|BUS)/i.test(id)) return 5;
+          if (/^(WCO|DWC)/i.test(id)) return 6;
+          return 7;
+      };
+      return Object.values(unique).sort((a, b) => {
+          const orderDiff = getTypeOrder(a.equipmentId) - getTypeOrder(b.equipmentId);
+          if (orderDiff !== 0) return orderDiff;
+          return (a.equipmentId || '').localeCompare(b.equipmentId || '');
+      });
+  }, [checklists]);
+
+  // 3. TÍNH TOÁN DỮ LIỆU LỊCH SỬ THIẾT BỊ (CHO BẢNG TỔNG HỢP CUỐI CÙNG)
+  const equipmentSummaryList = useMemo(() => {
+      const summary = {};
+      
+      checklists.forEach(log => {
+          const id = log.equipmentId;
+          if (!summary[id]) {
+              summary[id] = {
+                  id: id,
+                  type: log.type,
+                  totalCount: 0,
+                  lastCheck: log.timestamp || 0,
+                  lastDate: log.date,
+                  lastStatus: log.status, // OK or CRITICAL
+                  logs: []
+              };
+          }
+          
+          // Cộng dồn
+          summary[id].totalCount += 1;
+          summary[id].logs.push(log);
+
+          // Cập nhật thông tin mới nhất (giả định log chạy tuần tự hoặc check timestamp)
+          if ((log.timestamp || 0) > summary[id].lastCheck) {
+              summary[id].lastCheck = log.timestamp;
+              summary[id].lastDate = log.date;
+              summary[id].lastStatus = log.status;
+          }
+      });
+
+      // Sắp xếp logs bên trong từng thiết bị theo thời gian giảm dần
+      Object.values(summary).forEach(item => {
+          item.logs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      });
+
+      // Sắp xếp theo thứ tự: QC > RTG > RS/LRS/EH/UN > FL > TT > Pickup > Khác, sau đó theo ID
+      const getEqTypeOrder = (id) => {
+          if (/^QC/i.test(id)) return 0;
+          if (/^RTG/i.test(id)) return 1;
+          if (/^(RS|LRS|EH|UN)/i.test(id)) return 2;
+          if (/^FL/i.test(id)) return 3;
+          if (/^TT/i.test(id)) return 4;
+          if (/^(PU|BUS)/i.test(id)) return 5;
+          if (/^(WCO|DWC)/i.test(id)) return 6;
+          return 7;
+      };
+      return Object.values(summary).sort((a, b) => {
+          const orderDiff = getEqTypeOrder(a.id) - getEqTypeOrder(b.id);
+          if (orderDiff !== 0) return orderDiff;
+          return a.id.localeCompare(b.id);
+      });
+  }, [checklists]);
+
+  // --- NEW HELPERS FOR MONITOR FILTERS ---
+  const lowFuelList = useMemo(() => {
+      return latestLogs.filter(log => {
+          const fuel = parseInt(log.fuel || 100);
+          return fuel < 55;
+      });
+  }, [latestLogs]);
+
+  // Danh sách thiết bị vừa được cập nhật đổ dầu (isFuelOnly = true)
+  const fuelUpdateList = useMemo(() => {
+      return checklists
+          .filter(log => log.isFuelOnly === true)
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }, [checklists]);
+
+  const problematicList = useMemo(() => {
+      const allIssues = latestLogs.filter(log => {
+          // Check header status
+          if (log.status === 'CRITICAL') return true;
+          // Check items inside
+          if (log.data) {
+              return Object.values(log.data).some(item => item.status === 'CRITICAL' || item.status === 'WARNING');
+          }
+          return false;
+      });
+
+      const today = getCurrentDate();
+      
+      return {
+          today: allIssues.filter(log => log.date === today),
+          pending: allIssues.filter(log => log.date !== today)
+      };
+  }, [latestLogs]);
+
+  // Helper render chi tiết lỗi trong Modal
+  const renderLogDetails = (log) => {
+      if (!log.data) return <span className="text-gray-400 italic">Không có dữ liệu chi tiết</span>;
+      
+      // BỔ SUNG: Chuyển object thành mảng và lọc các item có lỗi
+      const issues = Object.entries(log.data).filter(([key, item]) => item.status !== 'OK');
+      if (issues.length === 0) return <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={14}/> Hoạt động tốt</span>;
+
+      return (
+          <div className="space-y-1.5 mt-2">
+              {issues.map(([key, item], idx) => (
+                  <div key={idx} className={`text-xs p-2 rounded-lg border flex flex-col gap-1 shadow-sm ${item.status === 'CRITICAL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                      <div className="font-bold flex items-start gap-1.5 uppercase tracking-wide text-[10px] opacity-80 border-b border-current pb-1">
+                          {item.status === 'CRITICAL' ? <XCircle size={12} className="shrink-0"/> : <AlertTriangle size={12} className="shrink-0"/>}
+                          <span>{getChecklistItemLabel(log.type, key)}</span>
+                      </div>
+                      <span className="font-medium text-sm ml-4 italic">"{item.note || 'Lỗi không xác định'}"</span>
+                  </div>
+              ))}
+          </div>
+      );
+  };
+
+  // New States for Quarter Logic
+  const [reportYear, setReportYear] = useState(getLocalYear());
+  const [reportQuarter, setReportQuarter] = useState(getLocalQuarter());
+
+  // NEW EFFECT: Sync Quarter/Year to reportDate when in QUARTER mode
+  useEffect(() => {
+    if (reportMode === 'QUARTER') {
+        setReportDate(`${reportYear}-${reportQuarter}`);
+    }
+  }, [reportYear, reportQuarter, reportMode]);
+
+  const ratingLabel = getRatingLabel(rating);
+
+  // Derived Data
+  const pendingResets = employees.filter(e => e.resetRequested).length;
+  const pendingReports = safetyReports.filter(r => r.status === 'Pending').length + ideas.filter(i => i.status === 'Pending').length;
+  // Đếm riêng báo cáo STOP WORK chưa xử lý để hiển thị cảnh báo ưu tiên
+  const stopWorkCount = safetyReports.filter(r => r.status === 'Pending' && r.isStopWork).length;
+  
+  // LAZY CLEANUP: Check for expired trash records on load (Client-side trigger)
+  useEffect(() => {
+      const cleanupExpiredRecords = async () => {
+          const now = Date.now();
+          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+          
+          records.forEach(async (rec) => {
+              if (rec.isDeleted && rec.deletedAt) {
+                  if (now - rec.deletedAt > thirtyDaysMs) {
+                      // Expired -> Perm Delete
+                      await deleteDoc(getDocRef('employee_records', rec.id));
+                  }
+              }
+          });
+      };
+      if (records.length > 0) cleanupExpiredRecords();
+  }, [records]);
+
+  // Filter ALL Records for History View
+  const filteredHistoryRecords = records.filter(rec => {
+    // 1. Check Trash/Active Mode
+    if (showTrash && !rec.isDeleted) return false;
+    if (!showTrash && rec.isDeleted) return false;
+
+    // 2. Search Term
+    const term = historySearchTerm.toLowerCase();
+    return (
+        rec.targetName.toLowerCase().includes(term) ||
+        rec.recorderName.toLowerCase().includes(term) ||
+        rec.content.toLowerCase().includes(term) ||
+        (rec.targetCode && rec.targetCode.toLowerCase().includes(term))
+    );
+  });
+
+  const handleResetNotificationClick = () => { setActiveTab('employees'); setFilterReset(true); setEmpSearchTerm(''); };
+  const handleApprovalNotificationClick = () => { setActiveTab('approval'); };
+
+  // THÊM: Helper render mức độ lỗi
+  const renderIssueSeverity = (log) => {
+      if (log.status === 'CRITICAL') return <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-[10px] font-bold border border-red-200 uppercase">Nghiêm trọng</span>;
+      // Check items
+      const hasCriticalItem = log.data && Object.values(log.data).some(i => i.status === 'CRITICAL');
+      if(hasCriticalItem) return <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-[10px] font-bold border border-red-200 uppercase">Hư hỏng</span>;
+      return <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-[10px] font-bold border border-yellow-200 uppercase">Cảnh báo</span>;
+  };
+
+  const filteredEmployees = employees.filter(emp => {
+    const term = empSearchTerm.toLowerCase();
+    const matchesSearch = 
+        emp.name.toLowerCase().includes(term) || 
+        emp.code.toLowerCase().includes(term) ||
+        emp.group.toLowerCase().includes(term) ||
+        (emp.position && emp.position.toLowerCase().includes(term)) ||
+        (emp.phone && emp.phone.includes(term));
+    const matchesFilter = filterReset ? emp.resetRequested : true;
+    return matchesSearch && matchesFilter;
+  });
+
+  // --- RECORD LOGIC ---
+  const filteredSubordinates = useMemo(() => {
+    if (!recordSearch.trim()) return [];
+    const term = recordSearch.toLowerCase();
+    return employees.filter(emp => {
+      const match = emp.name.toLowerCase().includes(term) || emp.code.toLowerCase().includes(term);
+      const isSubordinate = canRecord(currentUser.group, emp.group);
+      return match && isSubordinate;
+    });
+  }, [recordSearch, employees, currentUser.group]);
+
+
+
+  // BỔ SUNG: Hàm xử lý Upload ảnh cho Ghi nhận
+  const handleRecordImageUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+          showToast("Vui lòng chỉ chọn file ảnh!", "error");
+          return;
+      }
+      try {
+          const resizedImage = await resizeImage(file, 800, 800);
+          setRecordImage(resizedImage);
+          showToast("Đã tải ảnh lên thành công!");
+      } catch (error) {
+          showToast("Lỗi xử lý ảnh!", "error");
+      }
+  };
+
+  const handleSubmitRecord = async () => {
+    if (!selectedEmployee || !recordContent.trim()) return;
+    setIsProcessing(true);
+    try {
+        await addDoc(getCollection('employee_records'), {
+            targetId: selectedEmployee.id,
+            targetName: selectedEmployee.name,
+            targetGroup: selectedEmployee.group, 
+            targetCode: selectedEmployee.code,   
+            recorderId: currentUser.id,
+            recorderName: currentUser.name,
+            recorderGroup: currentUser.group, 
+            recorderCode: currentUser.code,
+            rating: rating, // SAVE RATING (1-5)
+            category: category, // SAVE CATEGORY
+            content: recordContent,
+            image: recordImage, // BỔ SUNG: Lưu ảnh vào Database
+            date: getCurrentDate(),
+            timestamp: Date.now(),
+            isDeleted: false,
+            deletedAt: null
+        });
+        showToast(`Đã ghi nhận (${rating} Sao) cho ${selectedEmployee.name}!`);
+        setRecordContent('');
+        setRecordImage(null); // Reset ảnh
+        setSelectedEmployee(null);
+        setRecordSearch('');
+        setRating(3); // Reset to neutral
+        setCategory('QUALITY'); // Reset category
+    } catch (e) {
+        showToast("Lỗi lưu ghi nhận!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteRecord = (recordId) => {
+    setDeleteRecordId(recordId);
+  };
+
+  const confirmSoftDeleteRecord = async () => {
+    if (!deleteRecordId) return;
+    setIsProcessing(true);
+    try {
+        // SOFT DELETE
+        await updateDoc(getDocRef('employee_records', deleteRecordId), {
+            isDeleted: true,
+            deletedAt: Date.now()
+        });
+        showToast("Đã chuyển vào thùng rác!");
+    } catch (e) {
+        showToast("Lỗi xóa ghi nhận!", "error");
+    } finally {
+        setIsProcessing(false);
+        setDeleteRecordId(null);
+    }
+  };
+
+  const handleRestoreRecord = async (recordId) => {
+      try {
+          await updateDoc(getDocRef('employee_records', recordId), {
+              isDeleted: false,
+              deletedAt: null
+          });
+          showToast("Đã khôi phục ghi nhận!");
+      } catch (e) {
+          showToast("Lỗi khôi phục!", "error");
+      }
+  };
+
+  const handleUpdateRecord = async () => {
+    if (!editingRecord || !editContent.trim()) return;
+    try {
+        await updateDoc(getDocRef('employee_records', editingRecord.id), {
+            content: editContent
+        });
+        showToast("Đã cập nhật ghi nhận!");
+        setEditingRecord(null);
+        setEditContent('');
+    } catch (e) {
+        showToast("Lỗi cập nhật!", "error");
+    }
+  };
+
+  // --- BỔ SUNG: TÁCH RIÊNG LOGIC TÍNH TOÁN HỒ SƠ CHO DEEP VIEW ĐỂ KHÔNG BỊ ẢNH HƯỞNG BỞI TAB LỌC CMIT/ADHOC ---
+  const detailedEmployeeProfile = useMemo(() => {
+    if (!detailedEmployeeId) return null;
+    const emp = employees.find(e => e.id === detailedEmployeeId);
+    if (!emp) return null;
+
+    // Lọc dữ liệu của riêng người này trong kỳ báo cáo hiện tại
+    const empRecords = records.filter(r => r.targetId === emp.id && !r.isDeleted && checkDateMatch(r.date, reportMode, reportDate));
+    const empSafety = safetyReports.filter(r => r.employeeId === emp.id && r.status === 'Approved' && checkDateMatch(r.date, reportMode, reportDate));
+    const empIdeas = ideas.filter(i => i.employeeId === emp.id && i.status === 'Approved' && checkDateMatch(i.date, reportMode, reportDate));
+    const empChecklists = checklists.filter(l => l.reporterId === emp.id && checkDateMatch(l.date, reportMode, reportDate));
+
+    const calcScore = (base, positives, negatives) => {
+        let s = base + positives - negatives;
+        if (s > 5) s = 5;
+        if (s < 1) s = 1;
+        return s;
+    };
+
+    const safetyScore = calcScore(3, empSafety.length + empRecords.filter(r => r.category === 'SAFETY' && r.rating >= 4).length, empRecords.filter(r => r.category === 'SAFETY' && r.rating <= 2).length);
+    const qualityScore = calcScore(3, empIdeas.length + empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && r.rating >= 4).length, empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && r.rating <= 2).length);
+    const attitudeScore = calcScore(3, empRecords.filter(r => r.category === 'ATTITUDE' && r.rating >= 4).length, empRecords.filter(r => r.category === 'ATTITUDE' && r.rating <= 2).length);
+    const attendanceScore = calcScore(3, empRecords.filter(r => r.category === 'ATTENDANCE' && r.rating >= 4).length, empRecords.filter(r => r.category === 'ATTENDANCE' && r.rating <= 2).length);
+
+    let rank = "THÀNH CÔNG";
+    let rankColor = "bg-green-100 text-green-700 border-green-200";
+
+    if (safetyScore <= 2 || qualityScore <= 2 || attitudeScore <= 2 || attendanceScore <= 2) {
+        rank = "CẦN CẢI THIỆN";
+        rankColor = "bg-red-100 text-red-700 border-red-200";
+    } else {
+        const highScores = [safetyScore, qualityScore, attitudeScore, attendanceScore].filter(s => s >= 4).length;
+        const perfectScores = [safetyScore, qualityScore, attitudeScore, attendanceScore].filter(s => s === 5).length;
+        if (highScores >= 2 || perfectScores >= 1) {
+            rank = "NỔI TRỘI";
+            rankColor = "bg-yellow-100 text-yellow-700 border-yellow-200";
+        }
+    }
+
+    // --- NEW LOGIC: BỘ ĐẾM 6 HẠNG MỤC HIỆN TRƯỜNG CỦA QUẢN LÝ ---
+    const isManager = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(emp.group) || emp.id === 'SUPER_ADMIN';
+    const canViewGembaStats = ['CMIT SM', 'CMIT TSV'].includes(emp.group) || emp.id === 'SUPER_ADMIN'; // CẬP NHẬT: Tách quyền xem Gemba
+    const currentSelectedYear = reportMode === 'YEAR' ? reportDate : reportDate.split('-')[0];
+    
+    const managerReportStats = {
+        'Pre-shift toolbox talk': 0,
+        'Leader Led Safety Gemba': 0,
+        'Leader Led Activities': 0,
+        'Critical Control Assessment ( CCA)': 0,
+        'SQDC': 0,
+        'Other Gemba': 0,
+        'Total': 0
+    };
+
+    if (isManager) {
+        safetyReports.forEach(r => {
+            // Chỉ đếm các báo cáo ghi nhận do chính quản lý này đăng
+            if (r.employeeId !== emp.id || !r.reportType) return;
+            
+            // Tách năm từ chuỗi ngày (VD: DD/MM/YYYY)
+            let recYear = '';
+            if (r.date) {
+                const parts = r.date.split(r.date.includes('/') ? '/' : '-');
+                if (parts.length === 3) {
+                    recYear = parts[0].length === 4 ? parts[0] : (parts[2].length === 2 ? '20'+parts[2] : parts[2]);
+                }
+            }
+            
+            if (recYear === currentSelectedYear && managerReportStats[r.reportType] !== undefined) {
+                managerReportStats[r.reportType]++;
+                managerReportStats.Total++;
+            }
+        });
+    }
+
+    return {
+        ...emp,
+        safetyScore, qualityScore, attitudeScore, attendanceScore,
+        checklistCount: empChecklists.length,
+        empChecklists, empRecords, empSafety, empIdeas,
+        rank, rankColor,
+        isManager, canViewGembaStats, managerReportStats, currentSelectedYear
+    };
+  }, [detailedEmployeeId, employees, records, safetyReports, ideas, checklists, reportMode, reportDate]);
+
+  // --- REPORT LOGIC: NEW SCORING SYSTEM ---
+  const getPerformanceStats = useMemo(() => {
+    let targets = employees;
+
+    // 1. Lọc theo Tab CMIT / ADHOC
+    targets = targets.filter(emp => {
+        const isAdhoc = getBlockPriority(emp.code, emp.group) === 2;
+        return reportTypeTab === 'CMIT' ? !isAdhoc : isAdhoc;
+    });
+
+    // 2. Filter by Group (Đã lọc theo Tab)
+    if (reportGroup !== 'ALL') {
+        targets = targets.filter(e => e.group === reportGroup);
+    }
+
+    // 3. Filter by Search Term (Name or Code)
+    if (reportSearchTerm.trim()) {
+        const term = reportSearchTerm.toLowerCase();
+        targets = targets.filter(e => 
+            e.name.toLowerCase().includes(term) || 
+            e.code.toLowerCase().includes(term)
+        );
+    }
+
+    return targets.map(emp => {
+        // 1. Fetch relevant data
+        const empRecords = records.filter(r => 
+            r.targetId === emp.id && 
+            !r.isDeleted && 
+            checkDateMatch(r.date, reportMode, reportDate)
+        );
+        const empSafety = safetyReports.filter(r => 
+            r.employeeId === emp.id && 
+            r.status === 'Approved' && 
+            checkDateMatch(r.date, reportMode, reportDate)
+        );
+        const empIdeas = ideas.filter(i => 
+            i.employeeId === emp.id && 
+            i.status === 'Approved' && 
+            checkDateMatch(i.date, reportMode, reportDate)
+        );
+
+        // --- NEW LOGIC: COUNT CHECKLISTS (Logic đếm checklist theo bộ lọc thời gian) ---
+        const empChecklists = checklists.filter(l => // DÙNG checklists
+            l.reporterId === emp.id && 
+            checkDateMatch(l.date, reportMode, reportDate)
+        );
+
+        // 2. Helper Calculation Function (Clamps between 1 and 5)
+        const calcScore = (base, positives, negatives) => {
+            let s = base + positives - negatives;
+            if (s > 5) s = 5;
+            if (s < 1) s = 1;
+            return s;
+        };
+
+        // 3. Logic for 4 Pillars
+        
+        // --- SAFETY ---
+        // Bonus: Approved Safety Reports (+1) OR Records with Category=SAFETY & Rating >= 4 (+1)
+        // Penalty: Records with Category=SAFETY & Rating <= 2 (-1)
+        const safetyPositives = empSafety.length + empRecords.filter(r => r.category === 'SAFETY' && (r.rating >= 4)).length;
+        const safetyNegatives = empRecords.filter(r => r.category === 'SAFETY' && (r.rating <= 2)).length;
+        const safetyScore = calcScore(3, safetyPositives, safetyNegatives);
+
+        // --- QUALITY ---
+        // Bonus: Approved Ideas (+1) OR Records with Category=QUALITY & Rating >= 4 (+1)
+        // Penalty: Records with Category=QUALITY & Rating <= 2 (-1)
+        const qualityPositives = empIdeas.length + empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && (r.rating >= 4)).length; // Default category often Quality
+        const qualityNegatives = empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && (r.rating <= 2)).length;
+        const qualityScore = calcScore(3, qualityPositives, qualityNegatives);
+
+        // --- ATTITUDE ---
+        // Bonus: Records with Category=ATTITUDE & Rating >= 4 (+1)
+        // Penalty: Records with Category=ATTITUDE & Rating <= 2 (-1)
+        const attitudePositives = empRecords.filter(r => r.category === 'ATTITUDE' && r.rating >= 4).length;
+        const attitudeNegatives = empRecords.filter(r => r.category === 'ATTITUDE' && r.rating <= 2).length;
+        const attitudeScore = calcScore(3, attitudePositives, attitudeNegatives);
+
+        // --- ATTENDANCE ---
+        // Bonus: Records with Category=ATTENDANCE & Rating >= 4 (+1)
+        // Penalty: Records with Category=ATTENDANCE & Rating <= 2 (-1)
+        const attendancePositives = empRecords.filter(r => r.category === 'ATTENDANCE' && r.rating >= 4).length;
+        const attendanceNegatives = empRecords.filter(r => r.category === 'ATTENDANCE' && r.rating <= 2).length;
+        const attendanceScore = calcScore(3, attendancePositives, attendanceNegatives);
+
+        // 4. Final Classification Logic
+        let rank = "THÀNH CÔNG";
+        let rankColor = "bg-green-100 text-green-700 border-green-200";
+        let sortWeight = 2; // Middle
+
+        // Priority 1: CẦN CẢI THIỆN (If ANY score <= 2)
+        if (safetyScore <= 2 || qualityScore <= 2 || attitudeScore <= 2 || attendanceScore <= 2) {
+            rank = "CẦN CẢI THIỆN";
+            rankColor = "bg-red-100 text-red-700 border-red-200";
+            sortWeight = 3; // Bottom
+        } 
+        // Priority 2: NỔI TRỘI (If >=2 scores are 4 OR >=1 score is 5 AND not "Need Improvement")
+        else {
+            const highScores = [safetyScore, qualityScore, attitudeScore, attendanceScore].filter(s => s >= 4).length;
+            const perfectScores = [safetyScore, qualityScore, attitudeScore, attendanceScore].filter(s => s === 5).length;
+            
+            if (highScores >= 2 || perfectScores >= 1) {
+                rank = "NỔI TRỘI";
+                rankColor = "bg-yellow-100 text-yellow-700 border-yellow-200";
+                sortWeight = 1; // Top
+            }
+        }
+
+        return {
+            ...emp,
+            safetyScore,
+            qualityScore,
+            attitudeScore,
+            attendanceScore,
+            checklistCount: empChecklists.length, // THÊM: Số lượng checklist
+            empChecklists, // BỔ SUNG: Truyền list checklist để hiển thị chi tiết ở Modal Deep View
+            empRecords,    // BỔ SUNG
+            empSafety,     // BỔ SUNG
+            empIdeas,      // BỔ SUNG
+            rank,
+            rankColor,
+            sortWeight,
+            // Keep specific counts for detail view if needed
+            safetyCount: empSafety.length,
+            ideaCount: empIdeas.length,
+            recordCount: empRecords.length
+        };
+    }).sort((a, b) => {
+        // Sort by Rank Weight first (Nổi trội -> Thành công -> Cần cải thiện)
+        if (a.sortWeight !== b.sortWeight) return a.sortWeight - b.sortWeight;
+        // Then by Name
+        return a.name.localeCompare(b.name);
+    });
+  }, [employees, records, safetyReports, ideas, checklists, reportTypeTab, reportGroup, reportDate, reportMode, reportSearchTerm]); // CẬP NHẬT DEPENDENCY
+
+
+  // --- UPDATED: EXPORT EXCEL  // --- UPDATED: EXPORT EXCEL (BỔ SUNG SHEET QUẢN LÝ VỚI 6 KPI HIỆN TRƯỜNG) ---
+  const handleRealExport = () => {
+    // 1. Check Library
+    if (!(window).XLSX) {
+        showToast("Thư viện Excel đang tải, vui lòng đợi vài giây!", "warning");
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+        // HÀM HELPER LẤY DỮ LIỆU CHUNG ĐÃ ĐƯỢC CẢI TIẾN THÊM TÁCH SHEET QUẢN LÝ
+        const extractDataForGroup = (groupType) => {
+            let targets = employees.filter(emp => {
+                const isMgr = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(emp.group) || emp.id === 'SUPER_ADMIN';
+                
+                // Trích xuất Quản lý sang Sheet riêng
+                if (groupType === 'MANAGER') return isMgr;
+                if (isMgr) return false; // Không lặp lại Quản lý ở Sheet Nhân sự thường
+                
+                const isAdhoc = getBlockPriority(emp.code, emp.group) === 2;
+                if (groupType === 'CMIT') return !isAdhoc;
+                if (groupType === 'ADHOC') return isAdhoc;
+                return false;
+            });
+
+            if (reportGroup !== 'ALL') {
+                targets = targets.filter(e => e.group === reportGroup);
+            }
+            if (reportSearchTerm.trim()) {
+                const term = reportSearchTerm.toLowerCase();
+                targets = targets.filter(e => e.name.toLowerCase().includes(term) || e.code.toLowerCase().includes(term));
+            }
+
+            return targets.map(emp => {
+                const empRecords = records.filter(r => r.targetId === emp.id && !r.isDeleted && checkDateMatch(r.date, reportMode, reportDate));
+                const empSafety = safetyReports.filter(r => r.employeeId === emp.id && r.status === 'Approved' && checkDateMatch(r.date, reportMode, reportDate));
+                const empIdeas = ideas.filter(i => i.employeeId === emp.id && i.status === 'Approved' && checkDateMatch(i.date, reportMode, reportDate));
+                const empChecklists = checklists.filter(l => l.reporterId === emp.id && checkDateMatch(l.date, reportMode, reportDate));
+
+                const calcScore = (base, pos, neg) => Math.max(1, Math.min(5, base + pos - neg));
+                
+                const safetyScore = calcScore(3, empSafety.length + empRecords.filter(r => r.category === 'SAFETY' && r.rating >= 4).length, empRecords.filter(r => r.category === 'SAFETY' && r.rating <= 2).length);
+                const qualityScore = calcScore(3, empIdeas.length + empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && r.rating >= 4).length, empRecords.filter(r => (r.category === 'QUALITY' || !r.category) && r.rating <= 2).length);
+                const attitudeScore = calcScore(3, empRecords.filter(r => r.category === 'ATTITUDE' && r.rating >= 4).length, empRecords.filter(r => r.category === 'ATTITUDE' && r.rating <= 2).length);
+
+                let posHistory = [];
+                let negHistory = [];
+                let otherNotes = [];
+
+                if (empRecords.length > 0) {
+                    empRecords.forEach(r => {
+                        const txt = `[Ngày ${r.date}] (${r.rating || 3} Sao): ${r.content}`;
+                        if ((r.rating || 3) >= 3) posHistory.push(txt);
+                        else negHistory.push(txt);
+                    });
+                }
+                if (empIdeas.length > 0) empIdeas.forEach(i => posHistory.push(`[Ngày ${i.date}] 💡 Sáng kiến: ${i.content}`));
+                if (emp.careerTimeline?.length > 0) {
+                    emp.careerTimeline.forEach(t => otherNotes.push(`[Ngày ${t.date}] 🔄 Lộ trình: ${t.fromGroup} -> ${t.toGroup} (${t.toPosition}). ${t.reason ? `Lý do: ${t.reason}` : ''}`));
+                }
+
+                const baseData = {
+                    "Mã NV": emp.code,
+                    "Họ Tên": emp.name,
+                    "Bộ Phận": emp.group,
+                    "CHECKLIST": empChecklists.length || 0,
+                    "AN TOÀN": `${safetyScore}/5`,
+                    "CHẤT LƯỢNG": `${qualityScore}/5`,
+                    "THÁI ĐỘ": `${attitudeScore}/5`
+                };
+
+                // THÊM 6 CỘT TÍNH TOÁN RIÊNG CHO QUẢN LÝ
+                if (groupType === 'MANAGER') {
+                    const managerStats = {
+                        'Pre-shift toolbox talk': { count: 0, details: [] },
+                        'Leader Led Safety Gemba': { count: 0, details: [] },
+                        'Leader Led Activities': { count: 0, details: [] },
+                        'Critical Control Assessment ( CCA)': { count: 0, details: [] },
+                        'SQDC': { count: 0, details: [] },
+                        'Other Gemba': { count: 0, details: [] },
+                        'Total': 0
+                    };
+
+                    // Duyệt tất cả báo cáo do chính quản lý này đăng trong tháng/quý/năm
+                    empSafety.forEach(s => {
+                        // Nếu là báo cáo hiện trường của Quản lý thì cho vào 6 cột KPI tương ứng
+                        if (s.reportType && managerStats[s.reportType] !== undefined) {
+                            managerStats[s.reportType].count++;
+                            managerStats.Total++;
+                            
+                            // --- THUẬT TOÁN TÓM TẮT THÔNG MINH ---
+                            // 1. Lấy thông tin Ca từ Title (VD: "Ca D1 - 04/03/2026" -> "Ca D1")
+                            let shiftInfo = "";
+                            if (s.title && s.title.includes('Ca')) {
+                                shiftInfo = s.title.split('-')[0].trim();
+                            }
+
+                            // 2. Trích xuất Khu vực từ Content (Hệ thống Hero tự sinh tag [📍 Khu vực]:)
+                            let locMatch = (s.content || '').match(/\[📍 Khu vực\]:\s*([^\n]+)/);
+                            let locationStr = locMatch ? locMatch[1].trim() : "hiện trường";
+
+                            // 3. Tách bỏ phần Thẻ Hệ thống để lấy Nội dung cốt lõi người dùng gõ
+                            let rawContent = (s.content || '')
+                                .replace(/\[📍 Khu vực\]:[^\n]+\n?/g, '')
+                                .replace(/\[👥 Liên quan\]:[^\n]+\n?/g, '')
+                                .replace(/\n/g, ' ') // Đưa về 1 dòng
+                                .trim();
+
+                            // Mở rộng độ dài hiển thị nội dung, chỉ cắt nếu quá dài (>150 ký tự)
+                            if (rawContent.length > 150) {
+                                rawContent = rawContent.substring(0, 150) + '...';
+                            }
+
+                            // 4. Ghép chuỗi thành format thông minh theo yêu cầu
+                            // Form mẫu: • [Ngày] Ca D1 / SQDC tại Cầu cảng: Nội dung...
+                            let smartSummary = `• [${s.date}] ${shiftInfo ? shiftInfo + ' / ' : ''}${s.reportType.toUpperCase()} tại ${locationStr}`;
+                            if (rawContent) {
+                                smartSummary += `\n  ↳ ${rawContent}`; // Xuống dòng nhẹ để thụt lề cho nội dung
+                            }
+
+                            managerStats[s.reportType].details.push(smartSummary);
+                        } else {
+                            // Nếu KHÔNG phải 6 báo cáo hiện trường kia (VD: báo cáo sự cố thường), mới đưa vào mục Tích cực
+                            posHistory.push(`[Ngày ${s.date}] ⚠️ Báo cáo AT: ${s.content}`);
+                        }
+                    });
+
+                    // Helper format chung: In tổng số lượng, sau đó xuống dòng kép liệt kê chi tiết
+                    const formatStat = (stat) => stat.count > 0 ? `Tổng: ${stat.count}\n\n${stat.details.join('\n\n')}` : "0";
+
+                    // Nối thêm cột cho báo cáo
+                    baseData["Toolbox Talk"] = formatStat(managerStats['Pre-shift toolbox talk']);
+                    baseData["Safety Gemba"] = formatStat(managerStats['Leader Led Safety Gemba']);
+                    baseData["Led Activities"] = formatStat(managerStats['Leader Led Activities']);
+                    baseData["CCA"] = formatStat(managerStats['Critical Control Assessment ( CCA)']);
+                    baseData["SQDC"] = formatStat(managerStats['SQDC']);
+                    baseData["Other Gemba"] = formatStat(managerStats['Other Gemba']);
+                    baseData["Tổng Hiện Trường"] = managerStats.Total;
+                } else {
+                    // Nhân viên bình thường thì đưa tất cả báo cáo an toàn vào Tích cực như cũ
+                    if (empSafety.length > 0) empSafety.forEach(s => posHistory.push(`[Ngày ${s.date}] ⚠️ Báo cáo AT: ${s.content}`));
+                }
+
+                baseData["TÍCH CỰC"] = posHistory.length > 0 ? posHistory.join('\n\n') : "";
+                baseData["TIÊU CỰC"] = negHistory.length > 0 ? negHistory.join('\n\n') : "";
+                baseData["GHI CHÚ KHÁC"] = otherNotes.length > 0 ? otherNotes.join('\n\n') : "";
+
+                return baseData;
+            });
+        };
+
+        const managerData = extractDataForGroup('MANAGER');
+        const cmitData = extractDataForGroup('CMIT');
+        const adhocData = extractDataForGroup('ADHOC');
+
+        if (managerData.length === 0 && cmitData.length === 0 && adhocData.length === 0) {
+            showToast("Không có dữ liệu nhân viên để xuất!", "warning");
+            setIsProcessing(false);
+            return;
+        }
+
+        // HÀM HELPER STYLE CHUẨN CHO TỪNG LOẠI SHEET
+        const createAndStyleSheet = (dataArray, isManagerSheet = false) => {
+            const worksheet = (window).XLSX.utils.json_to_sheet(dataArray);
+            if (dataArray.length === 0) return worksheet;
+
+            const range = (window).XLSX.utils.decode_range(worksheet['!ref']);
+            
+            // Căn chỉnh vị trí Cột Tích cực & Tiêu cực để tô màu (Mảng của Quản lý sẽ dài hơn 7 cột)
+            const posColIdx = isManagerSheet ? 14 : 7;
+            const negColIdx = isManagerSheet ? 15 : 8;
+
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const cellAddress = {c: C, r: R};
+                    const cellRef = (window).XLSX.utils.encode_cell(cellAddress);
+                    if (!worksheet[cellRef]) continue;
+
+                    const cellStyle = {
+                        border: {
+                            top: { style: "thin", color: { auto: 1 } },
+                            bottom: { style: "thin", color: { auto: 1 } },
+                            left: { style: "thin", color: { auto: 1 } },
+                            right: { style: "thin", color: { auto: 1 } }
+                        },
+                        alignment: { vertical: "center", wrapText: true }
+                    };
+
+                    if (R === 0) {
+                        cellStyle.font = { bold: true, color: { rgb: "FFFFFF" } };
+                        cellStyle.fill = { fgColor: { rgb: "1e3a8a" } }; // Dark Blue Header cho tất cả
+                        cellStyle.alignment.horizontal = "center";
+                    } else {
+                        // Xác định các cột cần Căn trái và neo Lên trên (Do chứa văn bản dài/danh sách)
+                        let leftAlignCols = [1, 2, posColIdx, negColIdx, posColIdx + 1];
+                        if (isManagerSheet) {
+                            leftAlignCols.push(7, 8, 9, 10, 11, 12); // Bao gồm cả 6 cột KPI Hiện trường
+                        }
+
+                        if (leftAlignCols.includes(C)) {
+                            cellStyle.alignment.horizontal = "left";
+                            cellStyle.alignment.vertical = "top"; // Neo văn bản lên trên cho dễ đọc
+                        } else {
+                            cellStyle.alignment.horizontal = "center";
+                        }
+                        
+                        if (C === posColIdx) cellStyle.fill = { fgColor: { rgb: "D1FAE5" } }; // Cột Tích cực xanh lá
+                        else if (C === negColIdx) cellStyle.fill = { fgColor: { rgb: "FCE7F3" } }; // Cột Tiêu cực đỏ nhạt
+                    }
+                    worksheet[cellRef].s = cellStyle;
+                }
+            }
+            
+            // Cấu hình độ rộng cột tương ứng
+            if (isManagerSheet) {
+                worksheet['!cols'] = [
+                    { wch: 10 }, { wch: 25 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, 
+                    { wch: 12 }, { wch: 10 }, 
+                    { wch: 38 }, { wch: 38 }, { wch: 38 }, { wch: 38 }, { wch: 38 }, { wch: 38 }, // Mở rộng 6 cột KPI Hiện trường để chứa text
+                    { wch: 16 }, // Tổng hiện trường
+                    { wch: 50 }, { wch: 50 }, { wch: 40 } // Các cột Tích Cực / Tiêu cực / Ghi chú
+                ];
+            } else {
+                worksheet['!cols'] = [
+                    { wch: 10 }, { wch: 25 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, 
+                    { wch: 14 }, { wch: 12 }, { wch: 50 }, { wch: 50 }, { wch: 40 }
+                ];
+            }
+            
+            return worksheet;
+        };
+
+        // 5. Tạo Workbook và Append 3 Sheet vào cùng 1 file Excel
+        const workbook = (window).XLSX.utils.book_new();
+        
+        if (managerData.length > 0) {
+            (window).XLSX.utils.book_append_sheet(workbook, createAndStyleSheet(managerData, true), "QuanLy_SM_TSV");
+        }
+        if (cmitData.length > 0) {
+            (window).XLSX.utils.book_append_sheet(workbook, createAndStyleSheet(cmitData, false), "NhanSu_CMIT");
+        }
+        if (adhocData.length > 0) {
+            (window).XLSX.utils.book_append_sheet(workbook, createAndStyleSheet(adhocData, false), "NhanSu_ADHOC");
+        }
+
+        // 6. Tải xuống file
+        let periodLabel = reportDate;
+        if (reportMode === 'QUARTER') periodLabel = `${reportYear}_${reportQuarter}`;
+        const fileName = `BaoCao_KPI_NS_${periodLabel}.xlsx`;
+
+        (window).XLSX.writeFile(workbook, fileName);
+        showToast(`Đã xuất báo cáo gồm 3 Sheet: Quản lý, CMIT và ADHOC: ${fileName}`);
+
+    } catch (e) {
+        console.error("Export Error:", e);
+        showToast("Lỗi khi xuất file Excel!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // --- NEW: QUY TRÌNH BÌNH BẦU THÔNG MINH (LỌC TOP 10 CMIT) ---
+  const handleGenerateCandidates = () => {
+      // 1. Xác định chính xác chuỗi thời gian muốn lọc
+      const periodStr = starVoteType === 'MONTH' ? starSetupMonth : `${starSetupYear}-${starSetupQuarter}`;
+
+      // 2. Chấm điểm và lọc
+      const candidates = employees.map(emp => {
+          // TIÊU CHÍ A: CHỈ LẤY NHÂN SỰ CMIT (Loại trừ ADHOC)
+          if (getBlockPriority(emp.code, emp.group) !== 1) return null;
+
+          // Lấy records và báo cáo trong kỳ
+          const empRecords = records.filter(r => r.targetId === emp.id && !r.isDeleted && checkDateMatch(r.date, starVoteType, periodStr));
+          const empSafety = safetyReports.filter(r => r.employeeId === emp.id && r.status === 'Approved' && checkDateMatch(r.date, starVoteType, periodStr));
+          
+          // Điểm cộng (An toàn + Sáng kiến >= 4 sao)
+          const positiveContributions = empRecords.filter(r => r.rating >= 4);
+          const totalGoodScore = empSafety.length + positiveContributions.length;
+
+          // TIÊU CHÍ B: KHÔNG ĐƯỢC CÓ BẤT KỲ SỰ CỐ / ĐIỂM TRỪ NÀO (<= 2 sao)
+          const hasAnyIncident = empRecords.some(r => r.rating <= 2);
+
+          // Bỏ qua nếu có sự cố hoặc không có thành tích nào
+          if (hasAnyIncident || totalGoodScore === 0) return null;
+
+          return {
+              ...emp,
+              starScore: totalGoodScore,
+              highlights: [...empSafety.map(s => s.content), ...positiveContributions.map(r => r.content)].slice(0, 3)
+          };
+      })
+      .filter(Boolean) // Lọc bỏ null
+      .sort((a, b) => b.starScore - a.starScore) // Sắp xếp điểm từ cao xuống thấp
+      .slice(0, 10); // TIÊU CHÍ C: LẤY CHÍNH XÁC TOP 10 CAO NHẤT
+
+      if (candidates.length === 0) {
+          return showToast("Không tìm thấy nhân viên CMIT nào có thành tích nổi bật và không vi phạm trong khoảng thời gian này.", "warning");
+      }
+
+      setStarCandidates(candidates);
+      
+      // Load lại các vote cũ của mình nếu đã từng vote trong kỳ này
+      const myOldVoteDoc = starVotes.find(v => v.id === `${periodStr}_${currentUser.id}`);
+      const oldSelections = {};
+      if (myOldVoteDoc && myOldVoteDoc.votes) {
+          myOldVoteDoc.votes.forEach(v => { oldSelections[v.empId] = v.reason; });
+      }
+      setMySelections(oldSelections);
+
+      setShowStarSetupModal(false);
+      setShowStarVoteModal(true);
+  };
+
+  // Toggle tick chọn (Tối đa 2 người)
+  const toggleSelection = (empId) => {
+      setMySelections(prev => {
+          const newSel = { ...prev };
+          if (newSel[empId] !== undefined) {
+              // Bỏ chọn
+              delete newSel[empId];
+          } else {
+              // Chọn mới (Kiểm tra giới hạn)
+              if (Object.keys(newSel).length >= 2) {
+                  showToast("Bạn chỉ được chọn tối đa 2 ứng viên!", "warning");
+                  return prev;
+              }
+              newSel[empId] = ""; // Chọn với lý do trống mặc định
+          }
+          return newSel;
+      });
+  };
+
+  const updateSelectionReason = (empId, text) => {
+      setMySelections(prev => ({ ...prev, [empId]: text }));
+  };
+
+  // LƯU PHIẾU BẦU LÊN FIRESTORE
+  const submitMyVotes = async () => {
+      if (Object.keys(mySelections).length === 0) return showToast("Vui lòng chọn ít nhất 1 ứng viên!", "error");
+      
+      setIsProcessing(true);
+      try {
+          const periodStr = starVoteType === 'MONTH' ? starSetupMonth : `${starSetupYear}-${starSetupQuarter}`;
+          const docId = `${periodStr}_${currentUser.id}`;
+
+          const votesArray = Object.entries(mySelections).map(([empId, reason]) => ({ empId, reason }));
+
+          await setDoc(getDocRef('star_votes', docId), {
+              period: periodStr,
+              type: starVoteType,
+              managerId: currentUser.id,
+              managerName: currentUser.name,
+              managerGroup: currentUser.group,
+              votes: votesArray,
+              timestamp: Date.now()
+          });
+
+          showToast("Đã ghi nhận phiếu bầu của bạn thành công!");
+          setShowStarVoteModal(false);
+      } catch (error) {
+          console.error("Lỗi vote:", error);
+          showToast("Lỗi khi lưu phiếu bầu!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // BAN LÃNH ĐẠO: CÔNG BỐ KẾT QUẢ
+  const handleAnnounceWinner = () => {
+      const isLeader = ['CMIT SM'].includes(currentUser.group) || currentUser.id === 'SUPER_ADMIN';
+      if (!isLeader) return showToast("Chỉ Ban Giám đốc (SM) hoặc Admin mới được phép công bố!", "error");
+      // Mở Modal xác nhận thay vì window.confirm
+      setShowConfirmAnnounce(true);
+  };
+
+  const executeAnnounceWinner = async () => {
+      setIsProcessing(true);
+      try {
+          const periodStr = starVoteType === 'MONTH' ? starSetupMonth : `${starSetupYear}-${starSetupQuarter}`;
+          
+          // Lọc phiếu bầu của kỳ này
+          const relevantVotes = starVotes.filter(v => v.period === periodStr);
+          if (relevantVotes.length === 0) throw new Error("Chưa có Quản lý nào tham gia bỏ phiếu!");
+
+          // Đếm phiếu
+          const voteCounts = {};
+          const voteDetails = {}; // Lưu lại những ai vote cho người này và nhận xét
+          
+          relevantVotes.forEach(vDoc => {
+              vDoc.votes.forEach(vote => {
+                  voteCounts[vote.empId] = (voteCounts[vote.empId] || 0) + 1;
+                  if (!voteDetails[vote.empId]) voteDetails[vote.empId] = [];
+                  voteDetails[vote.empId].push({ manager: vDoc.managerName, reason: vote.reason });
+              });
+          });
+
+          // Tìm số vote cao nhất
+          let maxVotes = 0;
+          Object.values(voteCounts).forEach(v => { if (v > maxVotes) maxVotes = v; });
+
+          // Lấy danh sách ID người chiến thắng (Có thể đồng hạng)
+          const winnerIds = Object.keys(voteCounts).filter(id => voteCounts[id] === maxVotes);
+          const winners = winnerIds.map(id => employees.find(e => e.id === id)).filter(Boolean);
+
+          if (winners.length === 0) throw new Error("Lỗi khi tìm thông tin người chiến thắng.");
+
+          // Thực hiện Lưu Record và Đăng Bảng tin (Sử dụng Batch để an toàn)
+          const batch = writeBatch(db);
+          const periodName = starVoteType === 'MONTH' ? `Tháng ${periodStr}` : `Quý ${starSetupQuarter} Năm ${starSetupYear}`;
+
+          let newsContent = `Ban lãnh đạo CMIT xin trân trọng chúc mừng ${winners.length > 1 ? 'các' : ''} cá nhân xuất sắc đã đạt danh hiệu NGÔI SAO AN TOÀN - ${periodName} với số phiếu tín nhiệm cao nhất (${maxVotes} phiếu) từ tập thể Quản lý.\n\n`;
+
+          winners.forEach(w => {
+              newsContent += `⭐ ${w.name} (${w.code} - ${w.group})\n`;
+              // Ghi Record 5 sao cho từng người
+              const newRecordRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'employee_records'));
+              batch.set(newRecordRef, {
+                  targetId: w.id, targetName: w.name, targetGroup: w.group, targetCode: w.code,
+                  recorderId: currentUser.id, recorderName: currentUser.name, recorderGroup: currentUser.group, recorderCode: currentUser.code,
+                  rating: 5, category: 'SAFETY',
+                  content: `[VINH DANH NGÔI SAO AN TOÀN - ${periodName}]\nĐược bình chọn bởi Tập thể Quản lý với ${maxVotes} phiếu bầu.\nTrân trọng cảm ơn sự đóng góp xuất sắc của bạn cho an toàn chung của cảng.`,
+                  date: getCurrentDate(), timestamp: Date.now(), isDeleted: false
+              });
+          });
+
+          newsContent += `\nTrân trọng cảm ơn các anh/chị đã luôn nỗ lực duy trì môi trường làm việc an toàn. Hãy tiếp tục phát huy nhé!`;
+
+          // Ghi News
+          const newNewsRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'news_posts'));
+          batch.set(newNewsRef, {
+              title: `🏆 CÔNG BỐ KẾT QUẢ NGÔI SAO AN TOÀN ${periodName.toUpperCase()}`,
+              content: newsContent,
+              type: 'INFO',
+              authorId: currentUser.id, authorName: currentUser.name, authorGroup: currentUser.group,
+              date: getCurrentDate(), timestamp: Date.now()
+          });
+
+          await batch.commit();
+          
+          showToast(`Đã công bố ${winners.length} người chiến thắng thành công!`);
+          setShowConfirmAnnounce(false);
+          setShowStarVoteModal(false);
+      } catch (error) {
+          console.error(error);
+          showToast(error.message || "Lỗi khi công bố kết quả!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- NEW: EXPORT EQUIPMENT REPORT ---
+  const handleEquipmentExport = () => {
+    // 1. Check Library
+    if (!(window).XLSX) {
+        showToast("Thư viện Excel đang tải, vui lòng đợi vài giây!", "warning");
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+        // 2. Filter Data by selected time
+        const logsToExport = checklists.filter(log => // DÙNG checklists
+            checkDateMatch(log.date, reportMode, reportDate)
+        ).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        if (logsToExport.length === 0) {
+            showToast("Không có dữ liệu thiết bị trong giai đoạn này!", "warning");
+            setIsProcessing(false);
+            return;
+        }
+
+        // 3. Map Data to Rows
+        const data = logsToExport.map(log => {
+            // Logic gom lỗi: Duyệt qua data, lấy note của WARNING/CRITICAL
+            let faultDetails = [];
+            if (log.data) {
+                Object.values(log.data).forEach(item => {
+                    if (item.status === 'WARNING' || item.status === 'CRITICAL') {
+                        if (item.note) faultDetails.push(item.note);
+                    }
+                });
+            }
+            const faultString = faultDetails.length > 0 ? faultDetails.join('; ') : 'Hoạt động tốt';
+
+            // Determine Overall Status text
+            let statusText = 'Tốt';
+            if (log.status === 'CRITICAL') statusText = 'Hư hỏng (Dừng)';
+            else if (faultDetails.length > 0) statusText = 'Cảnh báo';
+
+            return {
+                "Ngày": log.date,
+                "Ca": log.shift,
+                "Mã Thiết bị": log.equipmentId,
+                "Loại": log.type,
+                "Người kiểm tra": log.reporterName,
+// "Số giờ/KM": removed,
+                "Nhiên liệu %": log.fuel || '',
+                "Trạng thái": statusText,
+                "Chi tiết lỗi": faultString
+            };
+        });
+
+        // 4. Create Excel
+        const worksheet = (window).XLSX.utils.json_to_sheet(data);
+        // Column Widths
+        const wscols = [
+            {wch:12}, // Ngày
+            {wch:5},  // Ca
+            {wch:10}, // Mã TB
+            {wch:8},  // Loại
+            {wch:20}, // Người KT
+            {wch:10}, // Meter
+            {wch:10}, // Fuel
+            {wch:15}, // Status
+            {wch:50}  // Chi tiết lỗi
+        ];
+        worksheet['!cols'] = wscols;
+
+        const workbook = (window).XLSX.utils.book_new();
+        (window).XLSX.utils.book_append_sheet(workbook, worksheet, "BaoCaoThietBi");
+
+        const fileName = `BaoCao_ThietBi_${reportDate}.xlsx`;
+        (window).XLSX.writeFile(workbook, fileName);
+        showToast(`Đã xuất báo cáo thiết bị: ${fileName}`);
+
+    } catch (e) {
+        console.error("Equipment Export Error:", e);
+        showToast("Lỗi xuất file!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // --- NEW: EXPORT ALL EQUIPMENT FUEL STATUS (NATIVE VECTOR PDF 1-PAGE) ---
+  const handleExportAllFuel = () => {
+      // SỬ DỤNG JSPDF ĐỂ VẼ VECTOR TEXT (KHÔNG DÙNG ẢNH SCALE)
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+          showToast("PDF Engine is loading, please wait...", "warning");
+          return;
+      }
+
+      setIsProcessing(true);
+      try {
+          const { jsPDF } = window.jspdf;
+          // Khởi tạo trang A4 (210x297mm)
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+          // 1. Lọc và tổng hợp dữ liệu
+          const fuelDataMap = {};
+          latestLogs.forEach(log => {
+              if (log.equipmentId) fuelDataMap[log.equipmentId] = log;
+          });
+
+          // 2. Tính toán tóm tắt
+          let totalRecorded = 0;
+          let tierGreen = 0, tierYellow = 0, tierPink = 0, tierRed = 0;
+          const totalEquip = VALID_EQUIPMENT_LIST.Truck.length + VALID_EQUIPMENT_LIST.RTG.length + VALID_EQUIPMENT_LIST.RS.length + VALID_EQUIPMENT_LIST.Pickup.length - 4;
+
+          Object.values(fuelDataMap).forEach(log => {
+              if (log.fuel !== undefined && log.fuel !== null && log.fuel !== '') {
+                  totalRecorded++;
+                  const fuel = parseInt(log.fuel);
+                  if (fuel > 60) tierGreen++;
+                  else if (fuel >= 50) tierYellow++;
+                  else if (fuel >= 40) tierPink++;
+                  else tierRed++;
+              }
+          });
+
+          // --- HEADER KHU VỰC ---
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(14);
+          doc.setTextColor("#1e3a8a");
+          doc.text("REFUELING FIELD CHECKLIST", 10, 15);
+          
+          doc.setFontSize(7);
+          doc.setTextColor("#dc2626");
+          doc.text("[ ] Tick the box when refueled. Items in RED (< 40%) require IMMEDIATE refueling.", 10, 20);
+
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor("#475569");
+          doc.text(`Date: ${new Date().toLocaleString('en-US', {dateStyle:'short', timeStyle:'short'})}`, 200, 15, { align: 'right' });
+          // Loại bỏ dấu tiếng Việt cho tên người xuất file
+          const safeExporterName = removeAccents(currentUser.name);
+          doc.text(`By: ${safeExporterName}`, 200, 20, { align: 'right' });
+
+          // --- SUMMARY BANNER ---
+          doc.setFillColor("#f8fafc");
+          doc.setDrawColor("#cbd5e1");
+          doc.rect(10, 23, 190, 7, 'FD'); // Box summary
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.setTextColor("#1e293b");
+          doc.text(`SYSTEM DATA: ${totalRecorded}/${totalEquip} UPDATED`, 12, 28);
+
+          doc.setTextColor("#16a34a"); doc.text(`GOOD (>60%): ${tierGreen}`, 75, 28);
+          doc.setTextColor("#d97706"); doc.text(`FAIR (50-60%): ${tierYellow}`, 110, 28);
+          doc.setTextColor("#e11d48"); doc.text(`WARN (40-49%): ${tierPink}`, 145, 28);
+          doc.setTextColor("#dc2626"); doc.text(`URGENT (<40%): ${tierRed}`, 175, 28);
+
+          // --- GRID RENDER SYSTEM ---
+          let currentY = 34; // Điểm bắt đầu vẽ Grid
+          const startX = 10;
+          const colWidth = 46; 
+          const colGap = 2;
+          
+          // CẬP NHẬT KÍCH THƯỚC: Tăng chiều cao và khoảng cách để giãn đều khít 1 mặt A4
+          const rowHeight = 10.5; // Tăng từ 9 -> 10.5
+          const rowGap = 2;       // Tăng từ 1.5 -> 2
+
+          // Helper lấy màu theo mức dầu
+          const getTheme = (fuel, hasData) => {
+              if (!hasData) return { bg: '#f8fafc', border: '#cbd5e1', text: '#94a3b8', bar: '#cbd5e1', barBg: '#f1f5f9' };
+              if (fuel < 40) return { bg: '#fef2f2', border: '#ef4444', text: '#dc2626', bar: '#dc2626', barBg: '#fee2e2' };
+              if (fuel < 50) return { bg: '#fff1f2', border: '#fca5a5', text: '#e11d48', bar: '#f43f5e', barBg: '#ffe4e6' };
+              if (fuel <= 60) return { bg: '#ffffff', border: '#fde047', text: '#b45309', bar: '#eab308', barBg: '#fef9c3' };
+              return { bg: '#ffffff', border: '#86efac', text: '#15803d', bar: '#22c55e', barBg: '#dcfce3' };
+          };
+
+          // Hàm vẽ từng Nhóm thiết bị
+          const drawGroup = (title, typeKey) => {
+              const eqList = VALID_EQUIPMENT_LIST[typeKey].filter(id => id !== '__OTHER__');
+              const eqDataList = eqList.map(id => {
+                  const log = fuelDataMap[id];
+                  const hasData = log && log.fuel !== undefined && log.fuel !== '';
+                  return { id, log, hasData, fuel: hasData ? parseInt(log.fuel) : 999 };
+              });
+
+              // THUẬT TOÁN SẮP XẾP: Thấp lên đầu, Không data xuống cuối
+              eqDataList.sort((a, b) => {
+                  if (a.hasData && !b.hasData) return -1;
+                  if (!a.hasData && b.hasData) return 1;
+                  if (a.hasData && b.hasData) {
+                      if (a.fuel !== b.fuel) return a.fuel - b.fuel;
+                  }
+                  return a.id.localeCompare(b.id);
+              });
+
+              // Vẽ Header của Nhóm
+              doc.setFillColor("#1e3a8a");
+              doc.rect(startX, currentY, 190, 5, 'F');
+              doc.setTextColor("#ffffff");
+              doc.setFontSize(7);
+              doc.setFont("helvetica", "bold");
+              doc.text(title, startX + 2, currentY + 3.5);
+              doc.text(`${eqDataList.filter(e=>e.hasData).length}/${eqList.length} UNITS`, startX + 188, currentY + 3.5, { align: 'right' });
+
+              currentY += 6.5; // Dịch Y xuống dưới Header
+              let col = 0;
+
+              // Vẽ từng ô thiết bị
+              eqDataList.forEach((item) => {
+                  if (col >= 4) { 
+                      col = 0; 
+                      currentY += rowHeight + rowGap; 
+                  }
+
+                  const x = startX + col * (colWidth + colGap);
+                  const y = currentY;
+                  const theme = getTheme(item.fuel, item.hasData);
+
+                  // 1. Nền & Viền
+                  doc.setFillColor(theme.bg);
+                  doc.setDrawColor(theme.border);
+                  doc.setLineWidth(0.3);
+                  doc.rect(x, y, colWidth, rowHeight, 'FD');
+
+                  // 2. Ô Vuông Tick [ ]
+                  doc.setFillColor("#ffffff");
+                  doc.setDrawColor("#0f172a");
+                  doc.setLineWidth(0.2);
+                  doc.rect(x + 1.5, y + 1.5, 3, 3, 'FD');
+
+                  // 3. Mã Thiết Bị
+                  doc.setTextColor(item.hasData ? "#0f172a" : theme.text);
+                  doc.setFontSize(8);
+                  doc.setFont("helvetica", "bold");
+                  doc.text(item.id, x + 5.5, y + 4);
+
+                  // 4. Số % Dầu
+                  doc.setTextColor(theme.text);
+                  doc.setFontSize(7);
+                  doc.text(item.hasData ? `${item.fuel}%` : 'N/A', x + 24, y + 4, { align: 'right' });
+
+                  // 5. Thanh Dầu (Progress Bar)
+                  doc.setFillColor(theme.barBg);
+                  doc.setDrawColor(theme.border);
+                  doc.rect(x + 25, y + 1.5, 19.5, 2.5, 'FD'); // Nền thanh
+                  
+                  if (item.hasData) {
+                      doc.setFillColor(theme.bar);
+                      const fillWidth = (item.fuel / 100) * 19.5;
+                      doc.rect(x + 25, y + 1.5, fillWidth, 2.5, 'F'); // Ruột thanh
+                  }
+
+                  // --- MỚI: BOX GHI CHÚ LƯỢNG DẦU (DÀNH CHO ĐIỀN TAY NGOÀI HIỆN TRƯỜNG) ---
+                  doc.setTextColor("#64748b");
+                  doc.setFontSize(6);
+                  doc.setFont("helvetica", "bold");
+                  doc.text("Add:", x + 1.5, y + 9);
+                  
+                  doc.setFillColor("#ffffff");
+                  doc.setDrawColor("#94a3b8"); // Viền xám nhạt cho ô điền
+                  doc.setLineWidth(0.2);
+                  doc.rect(x + 7.5, y + 6.5, 10, 3.2, 'FD'); // Box điền lượng dầu
+                  // ----------------------------------------------------------------------
+
+                  // 6. Người cập nhật
+                  doc.setTextColor(item.hasData ? "#475569" : "#94a3b8");
+                  doc.setFontSize(5.5);
+                  doc.setFont("helvetica", item.hasData ? "normal" : "italic");
+                  // Lọc bỏ dấu Tiếng Việt cho tên người báo cáo
+                  let repName = item.hasData ? removeAccents(item.log.reporterName) : 'No update';
+                  if (repName.length > 18) repName = repName.substring(0, 16) + '..';
+                  // Dịch tên người sang phải để nhường chỗ cho ô Add
+                  doc.text(repName, x + 18.5, y + 9);
+
+                  // 7. Giờ cập nhật
+                  if (item.hasData) {
+                      doc.setFont("helvetica", "bold");
+                      const d = new Date(item.log.timestamp);
+                      const timeStr = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute:'2-digit'});
+                      doc.text(timeStr, x + 44.5, y + 9, { align: 'right' });
+                  }
+
+                  col++;
+              });
+              
+              currentY += rowHeight + rowGap + 2; // Padding giữa các nhóm
+          };
+
+          // --- VẼ CÁC NHÓM ---
+          drawGroup('1. TERMINAL TRACTORS (TRUCKS)', 'Truck');
+          drawGroup('2. RUBBER TYRED GANTRY (RTG)', 'RTG');
+          drawGroup('3. REACH STACKER & EMPTY HANDLER (RS)', 'RS');
+          drawGroup('4. PICKUP & SHUTTLE BUS', 'Pickup');
+
+          // --- FOOTER TỰ ĐỘNG CĂN ĐÁY TRANG ---
+          doc.setFontSize(6);
+          doc.setTextColor("#94a3b8");
+          doc.setFont("helvetica", "italic");
+          // Y = 292 đảm bảo nằm ngay sát mép dưới tờ A4 (297mm)
+          doc.text("HERO CMIT System - Native Vector PDF Export - Items auto-sorted from lowest to highest fuel.", 105, 292, { align: 'center' });
+
+          // Lưu file trực tiếp
+          const fileName = `Fuel_Priority_Checklist_${getCurrentDate().replace(/\//g, '-')}.pdf`;
+          doc.save(fileName);
+          showToast("Exported PDF Checklist Successfully!");
+
+      } catch (e) {
+          console.error("PDF Export Error:", e);
+          showToast("Lỗi xử lý dữ liệu PDF!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- NEW: EXPORT EQUIPMENT ISSUE REPORT (NATIVE VECTOR PDF 1-PAGE WITH IMAGES) ---
+  const handleExportAllIssues = () => {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+          showToast("PDF Engine is loading, please wait...", "warning");
+          return;
+      }
+
+      setIsProcessing(true);
+      try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+          // 1. Lọc dữ liệu: Chỉ lấy các thiết bị CÓ LỖI (Warning hoặc Critical) từ latestLogs
+          const issueList = [];
+          let countOk = 0, countWarn = 0, countCrit = 0;
+
+          latestLogs.forEach(log => {
+              let isCrit = log.status === 'CRITICAL';
+              let isWarn = false;
+              let issuesDetails = [];
+
+              // Quét chi tiết các hạng mục lỗi
+              if (log.data) {
+                  Object.entries(log.data).forEach(([key, item]) => {
+                      if (item.status === 'CRITICAL') {
+                          isCrit = true;
+                          // Lưu cả nội dung và hình ảnh base64
+                          issuesDetails.push({ note: item.note || 'Critical defect', image: item.image });
+                      } else if (item.status === 'WARNING') {
+                          isWarn = true;
+                          issuesDetails.push({ note: item.note || 'Minor issue', image: item.image });
+                      }
+                  });
+              }
+
+              if (isCrit) {
+                  countCrit++;
+                  issueList.push({ ...log, severity: 'CRITICAL', issuesDetails });
+              } else if (isWarn) {
+                  countWarn++;
+                  issueList.push({ ...log, severity: 'WARNING', issuesDetails });
+              } else {
+                  countOk++;
+              }
+          });
+
+          // Sắp xếp: Ưu tiên Critical (Đỏ) lên trước, sau đó tới Warning (Vàng)
+          issueList.sort((a, b) => {
+              if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1;
+              if (a.severity !== 'CRITICAL' && b.severity === 'CRITICAL') return 1;
+              return (b.timestamp || 0) - (a.timestamp || 0); // Lỗi mới nhất lên trước
+          });
+
+          // --- HEADER ---
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(14);
+          doc.setTextColor("#1e3a8a");
+          doc.text("EQUIPMENT DEFECT & ISSUE REPORT", 10, 15);
+          
+          doc.setFontSize(7);
+          doc.setTextColor("#64748b");
+          doc.text("Displays only equipment with reported issues. Items operating normally are excluded.", 10, 20);
+
+          doc.setFont("helvetica", "normal");
+          doc.text(`Date: ${new Date().toLocaleString('en-US', {dateStyle:'short', timeStyle:'short'})}`, 200, 15, { align: 'right' });
+          const safeExporterName = removeAccents(currentUser.name);
+          doc.text(`By: ${safeExporterName}`, 200, 20, { align: 'right' });
+
+          // --- SUMMARY BANNER ---
+          doc.setFillColor("#f8fafc");
+          doc.setDrawColor("#cbd5e1");
+          doc.rect(10, 23, 190, 7, 'FD');
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(8);
+          doc.setTextColor("#1e293b");
+          doc.text(`TOTAL SCANNED: ${latestLogs.length} UNITS`, 12, 28);
+
+          doc.setTextColor("#16a34a"); doc.text(`NORMAL (OK): ${countOk}`, 75, 28);
+          doc.setTextColor("#d97706"); doc.text(`WARNING (OPERABLE): ${countWarn}`, 115, 28);
+          doc.setTextColor("#dc2626"); doc.text(`CRITICAL (STOPPED): ${countCrit}`, 165, 28);
+
+          // --- GRID RENDER SYSTEM (DYNAMIC MASONRY LAYOUT) ---
+          let currentY = 34;
+          const startX = 10;
+          const colWidth = 61.5; // 3 columns (61.5 * 3 = 184.5 + margins)
+          const colGap = 2.5;
+          const colXs = [startX, startX + colWidth + colGap, startX + (colWidth + colGap) * 2];
+          
+          // MASONRY: Theo dõi chiều cao riêng biệt của từng cột để xếp thẻ khít nhau nhất
+          let colYs = [currentY, currentY, currentY];
+
+          if (issueList.length === 0) {
+              doc.setFont("helvetica", "italic");
+              doc.setFontSize(10);
+              doc.setTextColor("#16a34a");
+              doc.text("Excellent! All checked equipment are currently operating normally. No defects found.", 105, 50, { align: 'center' });
+          } else {
+              issueList.forEach((item) => {
+                  const maxIssues = 2; // Giới hạn hiển thị 2 lỗi để tối ưu không gian
+                  
+                  // 1. TÍNH TOÁN CHIỀU CAO THẺ TRƯỚC KHI VẼ
+                  let cardH = 15; // Header(5) + Info(8) + Padding(2)
+                  
+                  item.issuesDetails.slice(0, maxIssues).forEach(iss => {
+                      cardH += 4; // Chiều cao Text lỗi
+                      if (iss.image) cardH += 20; // Nếu có ảnh -> Tăng không gian (Ảnh cao 18mm + padding 2mm)
+                  });
+                  if (item.issuesDetails.length > maxIssues) cardH += 4; // Dòng "+ X more"
+
+                  // 2. TÌM CỘT NGẮN NHẤT ĐỂ XẾP THẺ VÀO
+                  let targetCol = 0;
+                  let minY = colYs[0];
+                  for(let i = 1; i < 3; i++) {
+                      if(colYs[i] < minY) {
+                          minY = colYs[i];
+                          targetCol = i;
+                      }
+                  }
+
+                  const x = colXs[targetCol];
+                  const y = colYs[targetCol];
+
+                  // Cấu hình màu
+                  const isCrit = item.severity === 'CRITICAL';
+                  const bg = isCrit ? '#fef2f2' : '#fefce8';
+                  const border = isCrit ? '#ef4444' : '#eab308';
+                  const headBg = isCrit ? '#dc2626' : '#ca8a04';
+
+                  // Vẽ nền thẻ
+                  doc.setFillColor(bg);
+                  doc.setDrawColor(border);
+                  doc.setLineWidth(0.4);
+                  doc.rect(x, y, colWidth, cardH, 'FD');
+
+                  // Vẽ Header thẻ
+                  doc.setFillColor(headBg);
+                  doc.rect(x, y, colWidth, 5, 'F');
+
+                  doc.setTextColor("#ffffff");
+                  doc.setFontSize(9);
+                  doc.setFont("helvetica", "bold");
+                  doc.text(item.equipmentId, x + 2, y + 3.5);
+                  
+                  doc.setFontSize(6);
+                  doc.text(isCrit ? 'CRITICAL' : 'WARNING', x + colWidth - 2, y + 3.5, { align: 'right' });
+
+                  // Thông tin cơ bản: Tra cứu Nhân viên để lấy Số điện thoại
+                  const emp = employees.find(e => e.id === item.reporterId);
+                  const phone = emp?.phone || 'No phone';
+
+                  doc.setTextColor("#475569");
+                  doc.setFont("helvetica", "normal");
+                  doc.setFontSize(6);
+                  
+                  const d = new Date(item.timestamp);
+                  const timeStr = d.toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute:'2-digit'});
+                  
+                  doc.text(`Date: ${item.date}`, x + 2, y + 8);
+                  doc.text(`Time: ${timeStr} (Shift ${item.shift || 'N/A'})`, x + 2, y + 11);
+
+                  let repName = removeAccents(item.reporterName);
+                  if (repName.length > 15) repName = repName.substring(0, 13) + '..';
+                  
+                  doc.text(`By: ${repName}`, x + colWidth - 2, y + 8, { align: 'right' });
+                  doc.text(`Tel: ${phone}`, x + colWidth - 2, y + 11, { align: 'right' });
+
+                  doc.setDrawColor(isCrit ? '#fca5a5' : '#fde047');
+                  doc.setLineWidth(0.2);
+                  doc.line(x + 2, y + 13, x + colWidth - 2, y + 13);
+
+                  // Vẽ Nội dung lỗi & HÌNH ẢNH
+                  doc.setTextColor(isCrit ? "#991b1b" : "#854d0e");
+                  doc.setFontSize(6.5);
+                  doc.setFont("helvetica", "bold");
+                  
+                  let textY = y + 16;
+                  item.issuesDetails.slice(0, maxIssues).forEach(iss => {
+                      let issueText = `- ${removeAccents(iss.note)}`;
+                      if (issueText.length > 45) issueText = issueText.substring(0, 42) + '...';
+                      doc.text(issueText, x + 2, textY);
+                      textY += 2;
+
+                      // VẼ HÌNH ẢNH (Nếu có)
+                      if (iss.image) {
+                          try {
+                              // Kích thước Thumbnail PDF: Rộng 30mm x Cao 18mm
+                              doc.addImage(iss.image, 'JPEG', x + 5, textY, 30, 18);
+                              textY += 19; // Dịch Y xuống dưới bức ảnh
+                          } catch(e) {
+                              console.error("PDF Image Draw Error", e);
+                          }
+                      } else {
+                          textY += 1;
+                      }
+                      textY += 1.5;
+                  });
+
+                  if (item.issuesDetails.length > maxIssues) {
+                      doc.text(`+ ${item.issuesDetails.length - maxIssues} more issue(s)...`, x + 2, textY);
+                  }
+
+                  // Cập nhật lại chiều cao của cột vừa vẽ
+                  colYs[targetCol] += cardH + colGap;
+              });
+          }
+
+          // --- FOOTER ---
+          doc.setFontSize(6);
+          doc.setTextColor("#94a3b8");
+          doc.setFont("helvetica", "italic");
+          doc.text("HERO CMIT System - Native Vector PDF Export - Defect list sorted by Critical severity.", 105, 292, { align: 'center' });
+
+          const fileName = `Equipment_Issue_Report_${getCurrentDate().replace(/\//g, '-')}.pdf`;
+          doc.save(fileName);
+          showToast("Exported Issue PDF Successfully!");
+
+      } catch (e) {
+          console.error("Issue PDF Export Error:", e);
+          showToast("Lỗi xuất báo cáo sự cố!", "error");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+
+  // --- NEW: EXPORT ATTENDANCE LIST (LIVE) ---
+  const handleAttendanceExport = () => {
+    // 1. Check Library
+    if (!(window).XLSX) {
+        showToast("Thư viện Excel đang tải, vui lòng đợi vài giây!", "warning");
+        return;
+    }
+    
+    // Check if data exists
+    if (!filteredCheckins || filteredCheckins.length === 0) {
+        showToast("Chưa có dữ liệu điểm danh cho ca này!", "warning");
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+        // 2. Sort by Shift then by Time (Mới nhất lên đầu)
+        const sortedData = [...filteredCheckins].sort((a, b) => {
+            if (a.shift !== b.shift) return a.shift.localeCompare(b.shift);
+            return (b.timestamp || 0) - (a.timestamp || 0);
+        });
+
+        // 3. Map Data to Rows
+        const data = sortedData.map(log => {
+            const emp = employees.find(e => e.id === log.employeeId);
+            return {
+                "Ngày": log.date,
+                "Ca Trực": log.shift,
+                "Giờ Check-in": log.time,
+                "Mã NV": emp?.code || '---',
+                "Họ Tên": log.name,
+                "Bộ Phận": emp?.group || 'Khác',
+                "Chức Vụ": emp?.position || ''
+            };
+        });
+
+        // 4. Create Excel
+        const worksheet = (window).XLSX.utils.json_to_sheet(data);
+        // Column Widths
+        const wscols = [
+            {wch:12}, // Ngày
+            {wch:8},  // Ca
+            {wch:12}, // Giờ
+            {wch:10}, // Mã NV
+            {wch:25}, // Tên
+            {wch:15}, // Bộ phận
+            {wch:20}  // Chức vụ
+        ];
+        worksheet['!cols'] = wscols;
+
+        const workbook = (window).XLSX.utils.book_new();
+        (window).XLSX.utils.book_append_sheet(workbook, worksheet, "DiemDanhHomNay");
+
+        // Filename: DiemDanh_Ca_[Ca]_DD-MM-YYYY.xlsx
+        const shiftName = attendanceShiftFilter === 'ALL' ? 'TatCa' : attendanceShiftFilter;
+        const fileName = `DiemDanh_Ca_${shiftName}_${getCurrentDate().replace(/\//g, '-')}.xlsx`;
+        (window).XLSX.writeFile(workbook, fileName);
+        
+        showToast(`Đã xuất báo cáo điểm danh: ${fileName}`);
+
+    } catch (e) {
+        console.error("Attendance Export Error:", e);
+        showToast("Lỗi xuất file!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // --- NEW: HANDLE MASTER DATA EXPORT (THEO YÊU CẦU) ---
+  const handleMasterDataExport = () => {
+    // 1. Check Library
+    if (!(window).XLSX) {
+        showToast("Thư viện Excel đang tải, vui lòng đợi vài giây!", "warning");
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+        // --- BẮT ĐẦU LOGIC MỚI: GOM NHÓM THÔNG MINH ---
+        const dataToExport = employees.map(emp => {
+            // 1. Lấy records của nhân viên
+            const empRecords = records
+                .filter(r => r.targetId === emp.id && !r.isDeleted)
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            if (empRecords.length === 0) return null; // Bỏ qua nhân viên không có ghi nhận
+
+            // 2. LOGIC GOM NHÓM THÔNG MINH
+            const groups = {};
+            const others = [];
+
+            empRecords.forEach(rec => {
+                // Làm sạch và VIẾT HOA toàn bộ
+                let raw = (rec.content || '').toUpperCase();
+                raw = raw.replace('[NHẬP TỪ EXCEL]', '').trim();
+
+                // Regex tìm Hạng mục và Chi tiết (Chấp nhận xuống dòng hoặc dấu gạch nối)
+                // Mẫu tìm kiếm: HẠNG MỤC: ... (xuống dòng hoặc -) ... CHI TIẾT: ...
+                // Sử dụng 's' flag để match qua nhiều dòng nếu cần
+                const match = raw.match(/HẠNG MỤC:\s*(.*?)(?:\n|-|$).*CHI TIẾT:\s*(.*)/s);
+
+                if (match) {
+                    const category = match[1].trim(); // VD: BÁO CÁO AN TOÀN
+                    const detail = match[2].trim();   // VD: TỦ ĐIỆN HỞ...
+                    
+                    if (!groups[category]) groups[category] = [];
+                    // Chỉ thêm nếu chi tiết chưa tồn tại (tránh trùng lặp nội dung y hệt)
+                    if (!groups[category].includes(detail)) {
+                        groups[category].push(detail);
+                    }
+                } else {
+                    // Xử lý các dòng tự do (không theo mẫu import)
+                    // Xóa các ký tự đặc biệt đầu dòng (- + *)
+                    raw = raw.replace(/^[-*+=]+/, '').trim();
+                    if (raw) others.push(raw);
+                }
+            });
+
+            // 3. Xây dựng chuỗi kết quả (Final String)
+            let finalContent = [];
+
+            // Nhóm theo Category
+            Object.keys(groups).forEach(cat => {
+                finalContent.push(`- ${cat}:`); // Tiêu đề nhóm
+                groups[cat].forEach(det => finalContent.push(`   + ${det}`)); // Các chi tiết
+            });
+
+            // Nhóm Khác
+            if (others.length > 0) {
+                if (finalContent.length > 0) finalContent.push(`- GHI NHẬN KHÁC:`);
+                others.forEach(itm => finalContent.push(`   + ${itm}`));
+            }
+
+            // 4. Trả về Object cho Excel (TÁCH CỘT RÕ RÀNG)
+            return {
+                "Mã NV": emp.code,
+                "Họ Tên": emp.name.toUpperCase(),
+                "Bộ Phận": emp.group,        // Cột riêng
+                "Chức Vụ": emp.position,    // Cột riêng
+                "Tổng Lỗi": empRecords.length,
+                "Nội Dung Tổng Hợp": finalContent.join('\n') // Nối bằng xuống dòng
+            };
+        }).filter(item => item !== null);
+
+        if (dataToExport.length === 0) {
+            showToast("Không có dữ liệu phù hợp để xuất!", "warning");
+            setIsProcessing(false);
+            return;
+        }
+
+        // Xuất file
+        const worksheet = (window).XLSX.utils.json_to_sheet(dataToExport);
+        // Chỉnh độ rộng cột: Mã, Tên, Bộ phận, Chức vụ, Tổng lỗi, Nội dung (rộng nhất)
+        const wscols = [{wch:10}, {wch:25}, {wch:15}, {wch:20}, {wch:10}, {wch:100}]; 
+        worksheet['!cols'] = wscols;
+        
+        const workbook = (window).XLSX.utils.book_new();
+        (window).XLSX.utils.book_append_sheet(workbook, worksheet, "TongHopThongMinh");
+        
+        const fileName = `Smart_Export_${new Date().toISOString().slice(0,10)}.xlsx`;
+        (window).XLSX.writeFile(workbook, fileName);
+        
+        showToast(`Đã xuất báo cáo thông minh: ${fileName}`);
+
+    } catch (e) {
+        console.error("Master Export Error:", e);
+        showToast("Lỗi khi xuất Master Data!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // --- EXCEL LIBRARY ---
+  useEffect(() => {
+    if (document.querySelector('script[src*="xlsx.bundle.js"]')) return;
+    const script = document.createElement('script');
+    // CẬP NHẬT: Thay đổi sang thư viện xlsx-js-style để hỗ trợ format cell (màu sắc, border)
+    script.src = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
+    script.async = true;
+    document.body.appendChild(script);
+
+    // CẬP NHẬT: Tải thư viện jsPDF để xuất Vector PDF (Thay vì html2pdf render dạng ảnh)
+    if (!document.querySelector('script[src*="jspdf.umd.min.js"]')) {
+        const pdfScript = document.createElement('script');
+        pdfScript.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        pdfScript.async = true;
+        document.body.appendChild(pdfScript);
+    }
+    
+    // THÊM: Script tạo QR Code Image Generator
+    if (!document.querySelector('script[src*="qrcode.min.js"]')) {
+        const qrScript = document.createElement('script');
+        qrScript.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
+        qrScript.async = true;
+        document.body.appendChild(qrScript);
+    }
+  }, []);
+
+  // FIX: Dùng chung một hàm đọc file, tránh trùng lặp code
+  const readFileAsText = (e, onSuccess, successMsg = "Đã đọc file!") => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsProcessing(true);
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    if (isExcel) {
+      if (!(window).XLSX) {
+        showToast("Thư viện Excel chưa sẵn sàng!", "error");
+        setIsProcessing(false);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = (window).XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = (window).XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const tsvData = jsonData.map(row => row.join('\t')).join('\n');
+          onSuccess(tsvData);
+          showToast(successMsg);
+        } catch (error) {
+          console.error("Excel read error:", error);
+          showToast("Lỗi đọc file Excel!", "error");
+        } finally {
+          setIsProcessing(false);
+          e.target.value = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        onSuccess(evt.target.result);
+        showToast(successMsg);
+        setIsProcessing(false);
+        e.target.value = '';
+      };
+      reader.onerror = () => {
+        showToast("Lỗi đọc file!", "error");
+        setIsProcessing(false);
+        e.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleFileUpload = (e) => readFileAsText(e, setImportText, "Đã đọc file danh sách nhân viên!");
+
+  // --- HANDLER FOR RECORD FILE UPLOAD (dùng lại readFileAsText) ---
+  const handleRecordFileUpload = (e) => readFileAsText(e, setImportRecordText, "Đã đọc file Excel (Records)!");
+
+  // --- NEW LOGIC: IMPORT RECORDS WITH FUZZY MATCH ---
+  const handleImportRecords = async () => {
+    if (!importRecordText.trim()) return showToast("Chưa có dữ liệu!", "error");
+    
+    setIsProcessing(true);
+    let successCount = 0;
+    let failCount = 0;
+    let skipCount = 0;
+    const batchId = Date.now(); // Unique ID for this import batch
+
+    try {
+        const allLines = importRecordText.trim().split('\n');
+        if (allLines.length < 2) throw new Error("Dữ liệu quá ngắn!");
+
+        // 1. Detect Separator & Header
+        let separator = '\t';
+        let headerLine = allLines[0];
+        if (headerLine.indexOf('\t') === -1 && headerLine.indexOf(',') > -1) separator = ',';
+        
+        const headers = headerLine.split(separator).map(h => h.trim());
+        const lowerHeaders = headers.map(h => h.toLowerCase());
+
+        // Find Indices Helper (Used for critical ID mapping)
+        const findIndex = (keywords) => lowerHeaders.findIndex(h => keywords.some(k => h.includes(k)));
+
+        // --- BƯỚC 1: MỞ RỘNG TỪ KHÓA NHẬN DIỆN HEADER (SMART HEADER DETECTION) ---
+        // Định nghĩa các nhóm từ khóa để tìm Index (Hỗ trợ EN/VI/Viết tắt)
+        const keywordsCode = ['mã', 'code', 'id', 'manv', 'emp id', 'empid'];
+        const keywordsName = ['tên', 'name', 'họ'];
+        const keywordsDate = ['ngày', 'date', 'time'];
+        
+        // Tìm index các cột quan trọng
+        const idxCode = findIndex(keywordsCode);
+        const idxName = findIndex(keywordsName);
+        const idxDate = findIndex(keywordsDate);
+
+        // --- BƯỚC 2: XÁC ĐỊNH CÁC CỘT CẦN LOẠI TRỪ (IDENTITY COLUMNS) ---
+        // Gom tất cả từ khóa định danh để quét một lượt
+        const allIdentityKeywords = [
+            ...keywordsCode,
+            ...keywordsName,
+            ...keywordsDate,
+            // Phone
+            'sđt', 'phone', 'tel', 'no. phone', 'no phone', 'mobile',
+            // Job/Position
+            'vị trí', 'chức vụ', 'pos', 'job', 'title', 'chức danh',
+            // Misc/Dept
+            'tuyến', 'xe', 'route', 'bộ phận', 'dept', 'phòng', 'email', 'mail'
+        ];
+
+        const excludedIndices = [];
+        headers.forEach((h, index) => {
+            const lowerH = h.toLowerCase();
+            // Nếu tiêu đề cột chứa bất kỳ từ khóa định danh nào -> Thêm vào danh sách loại trừ
+            if (allIdentityKeywords.some(k => lowerH.includes(k))) {
+                excludedIndices.push(index);
+            }
+        });
+
+        // Validation bắt buộc
+        if (idxCode === -1 || idxName === -1) {
+            setIsProcessing(false);
+            return showToast("Thiếu cột Mã NV hoặc Họ Tên!", "error");
+        }
+
+        const batchPromises = [];
+
+        // 2. Loop Rows
+        for (let i = 1; i < allLines.length; i++) {
+            const line = allLines[i];
+            if (!line.trim()) continue;
+
+            const parts = line.split(separator);
+            const rawCode = parts[idxCode]?.trim();
+            const rawName = parts[idxName]?.trim();
+            
+            // Skip empty rows
+            if (!rawCode && !rawName) {
+                skipCount++;
+                continue;
+            }
+
+            // 3. FUZZY MATCHING (BOTH CODE & NAME)
+            const matchedEmp = employees.find(emp => {
+                const matchId = checkFuzzyMatch(rawCode, emp.code, 'ID');
+                const matchName = checkFuzzyMatch(rawName, emp.name, 'NAME');
+                return matchId && matchName;
+            });
+
+            if (!matchedEmp) {
+                failCount++;
+                console.warn(`Cannot match record: ${rawCode} - ${rawName}`);
+                continue;
+            }
+
+            // 4. Extract Content & Date
+            let recordDate = getCurrentDate();
+            if (idxDate !== -1 && parts[idxDate]) {
+                recordDate = excelDateToJSDate(parts[idxDate]);
+            }
+
+            // --- BƯỚC 3: XỬ LÝ DỮ LIỆU (DATA PROCESSING LOOP) ---
+            for (let j = 0; j < headers.length; j++) {
+                // Check 1: Bỏ qua các cột định danh (Emp ID, Job, Phone...)
+                if (excludedIndices.includes(j)) continue;
+
+                const cellContent = parts[j]?.trim();
+
+                // Check 2: Bỏ qua nếu ô trống hoặc giá trị bằng '0' (Lọc rác Excel)
+                if (!cellContent || cellContent === '0') {
+                    continue;
+                }
+
+                // 3. Tạo Record khi dữ liệu hợp lệ (VD: "Lỗi thao tác", "Thưởng A", v.v.)
+                const recordPayload = {
+                    targetId: matchedEmp.id,
+                    targetName: matchedEmp.name,
+                    targetGroup: matchedEmp.group,
+                    targetCode: matchedEmp.code,
+                    
+                    recorderId: 'SYSTEM',
+                    recorderName: 'System Import',
+                    recorderGroup: 'ADMIN',
+                    recorderCode: 'SYS',
+
+                    rating: 3, // Default Neutral
+                    category: 'QUALITY', // Default Category
+                    
+                    // Format nội dung hiển thị rõ ràng
+                    content: `[NHẬP TỪ EXCEL]\n- Hạng mục: ${headers[j]}\n- Chi tiết: ${cellContent}`,
+                    
+                    date: recordDate,
+                    timestamp: Date.now(),
+                    importedBatchId: batchId,
+                    isDeleted: false,
+                    deletedAt: null
+                };
+
+                batchPromises.push(addDoc(getCollection('employee_records'), recordPayload));
+                successCount++;
+            }
+        }
+
+        // 5. Execute Batch
+        await Promise.all(batchPromises);
+
+        setShowRecordImportModal(false);
+        setImportRecordText('');
+        showToast(`Nhập xong: ${successCount} dòng thành công, ${failCount} dòng không khớp nhân viên.`);
+
+    } catch (e) {
+        console.error(e);
+        showToast("Lỗi xử lý file Import!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  // FIX CORE: Import nhân viên an toàn - không đè dữ liệu thủ công, không tạo trùng lặp
+  // Các trường do nhân viên tự cập nhật thủ công sẽ KHÔNG bị ghi đè bởi import từ hệ thống
+  const EMPLOYEE_MANUAL_FIELDS = ['avatar', 'phone', 'routeLine', 'commuteMethod', 'password', 'email', 'isFirstLogin', 'resetRequested', 'careerTimeline'];
+
+  const handleImportEmployees = async () => {
+    try {
+      if (!importText.trim()) return showToast("Chưa có dữ liệu!", "error");
+      const allLines = importText.trim().split('\n');
+      if (allLines.length < 2) return showToast("Dữ liệu quá ngắn!", "error");
+
+      let separator = '\t';
+      const headerLine = allLines[0];
+      if (headerLine.indexOf('\t') === -1 && headerLine.indexOf(',') > -1) separator = ',';
+      
+      const headers = headerLine.split(separator).map(h => h.trim().toLowerCase());
+      
+      const findIndex = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+      const idxCode = findIndex(['mã', 'code', 'id', 'manv']);
+      const idxName = findIndex(['tên', 'name', 'họ']);
+      const idxPos  = findIndex(['vị trí', 'chức vụ', 'pos', 'job', 'chức danh']);
+      const idxDept = findIndex(['bộ phận', 'phòng', 'dept']);
+      const idxPhone = findIndex(['sđt', 'phone', 'tel', 'điện thoại']);
+      const idxRoute = findIndex(['tuyến', 'xe', 'route', 'hướng']);
+
+      if (idxCode === -1 || idxName === -1) return showToast("Thiếu cột Mã NV hoặc Họ Tên!", "error");
+
+      setIsProcessing(true);
+
+      // 1. Đọc snapshot hiện tại để biết nhân viên nào đã tồn tại (tránh trùng lặp + bảo vệ dữ liệu thủ công)
+      const existingSnap = await getDocs(getCollection('employees'));
+      const existingMap = {}; // { code → existingData }
+      existingSnap.docs.forEach(d => {
+        const data = d.data();
+        existingMap[d.id] = data;
+      });
+
+      // 2. Parse tất cả dòng từ file
+      const rowsToProcess = [];
+      for (const line of allLines.slice(1)) {
+        if (!line.trim()) continue;
+        const parts = line.split(separator);
+        const rawCode = parts[idxCode]?.trim().toUpperCase();
+        const rawName = parts[idxName]?.trim().toUpperCase();
+        if (!rawCode || !rawName) continue;
+
+        const position = (idxPos !== -1 ? parts[idxPos]?.trim() : '') || 'Nhân viên';
+        const phoneFromFile = idxPhone !== -1 ? normalizePhone(parts[idxPhone]) : '';
+        
+        // Dữ liệu gốc từ hệ thống (có thể bị override bởi dữ liệu thủ công)
+        const systemData = {
+          code: rawCode,
+          name: rawName,
+          position: position,
+          group: determineGroup(position),
+          dept: (idxDept !== -1 ? parts[idxDept]?.trim() : '') || 'Khác',
+          route: (idxRoute !== -1 ? parts[idxRoute]?.trim() : '') || '',
+          id: rawCode
+        };
+
+        const existing = existingMap[rawCode];
+
+        if (existing) {
+          // NHÂN VIÊN ĐÃ TỒN TẠI: chỉ cập nhật các trường hệ thống, GIỮ NGUYÊN trường thủ công
+          const updatePayload = { ...systemData };
+
+          // Bảo vệ toàn bộ EMPLOYEE_MANUAL_FIELDS: không đè nếu đã có giá trị
+          EMPLOYEE_MANUAL_FIELDS.forEach(field => {
+            if (existing[field] !== undefined && existing[field] !== null && existing[field] !== '') {
+              delete updatePayload[field]; // Không ghi đè trường đã có
+            }
+          });
+
+          // Đặc biệt: nếu nhân viên đã tự cập nhật SĐT thì ưu tiên giữ lại
+          if (existing.phone && existing.phone !== '') {
+            delete updatePayload.phone;
+          } else if (phoneFromFile) {
+            updatePayload.phone = phoneFromFile; // Chỉ điền nếu chưa có
+          }
+
+          rowsToProcess.push({ code: rawCode, payload: updatePayload, isNew: false });
+        } else {
+          // NHÂN VIÊN MỚI: tạo mới hoàn toàn
+          rowsToProcess.push({
+            code: rawCode,
+            payload: {
+              ...systemData,
+              phone: phoneFromFile,
+            },
+            isNew: true
+          });
+        }
+      }
+
+      if (rowsToProcess.length === 0) return showToast("Không có dòng hợp lệ nào!", "warning");
+
+      // 3. Batch write theo chunk 400 (giới hạn Firestore là 500 ops/batch)
+      const CHUNK_SIZE = 400;
+      let totalCount = 0;
+      let newCount = 0;
+      let updatedCount = 0;
+
+      for (let i = 0; i < rowsToProcess.length; i += CHUNK_SIZE) {
+        const chunk = rowsToProcess.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(({ code, payload, isNew }) => {
+          const ref = getDocRef('employees', code);
+          if (isNew) {
+            batch.set(ref, payload); // Tạo mới
+            newCount++;
+          } else {
+            batch.update(ref, payload); // Chỉ update fields hệ thống
+            updatedCount++;
+          }
+          totalCount++;
+        });
+        await batch.commit();
+      }
+
+      setShowImportModal(false);
+      setImportText('');
+      showToast(`✅ Đã xử lý ${totalCount} nhân viên (${newCount} mới, ${updatedCount} cập nhật). Dữ liệu thủ công được bảo toàn.`);
+
+      // Ghi Audit Log
+      await createAuditLog('EMPLOYEE_BULK_IMPORT', currentUser, 'BULK', {
+        total: totalCount, newCount, updatedCount,
+        note: 'Smart merge - manual fields preserved'
+      });
+
+    } catch (e) {
+      console.error("Import Employee Error:", e);
+      showToast("Lỗi xử lý dữ liệu! " + e.message, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const confirmResetPassword = async () => {
+    if (!resetTargetId) return;
+    
+    if (!resetAdminPass) return showToast("Vui lòng nhập mật khẩu xác nhận!", "warning");
+
+    // XÁC THỰC MẬT KHẨU QUẢN LÝ
+    const isSuperAdmin = currentUser.id === 'SUPER_ADMIN';
+    const isValidPass = isSuperAdmin 
+        ? (resetAdminPass === '15061990' || resetAdminPass === 'tsv') 
+        : (resetAdminPass === currentUser.password);
+    
+    if (!isValidPass) {
+        return showToast("Mật khẩu Quản lý không chính xác!", "error");
+    }
+
+    setIsProcessing(true);
+    try {
+        const targetEmp = employees.find(e => e.id === resetTargetId);
+        
+        // MẸO (FIX LỖI): Vì không có Admin SDK để xóa account Firebase Auth cũ, 
+        // ta tạo một email giả mới tinh để nhân viên có thể tạo lại tài khoản Auth mới mà không bị trùng lặp.
+        const newPseudoEmail = `${targetEmp?.code?.toLowerCase().trim()}_${Date.now()}@hero.local`;
+
+        await updateDoc(getDocRef('employees', resetTargetId), {
+            password: '',
+            isFirstLogin: true,
+            resetRequested: false,
+            email: newPseudoEmail // Đè email cũ bằng email mới để Firebase Auth coi như user mới
+        });
+
+        // --- NEW: Ghi lại hành động Reset Pass vào Audit Log ---
+        await createAuditLog('RESET_PASSWORD', currentUser, resetTargetId, {
+            targetName: targetEmp?.name,
+            targetCode: targetEmp?.code,
+            reason: 'Quản lý yêu cầu reset mật khẩu về mặc định',
+            newEmail: newPseudoEmail
+        });
+
+        showToast("Đã reset mật khẩu thành công!");
+    } catch(e) {
+        showToast("Lỗi cập nhật!", "error");
+    } finally {
+        setIsProcessing(false);
+        setResetTargetId(null);
+        setResetAdminPass(''); // Xóa password
+    }
+  };
+
+  const handleResetPassword = (empId) => {
+    setResetTargetId(empId);
+  };
+
+  // --- NEW: BAN / UNBAN NHÂN VIÊN ---
+  const handleBanEmployee = async () => {
+    if (!banTargetEmp) return;
+    if (!banReason.trim()) { showToast('Vui lòng nhập lý do khóa!', 'error'); return; }
+    if (!banAdminPass.trim()) { showToast('Vui lòng nhập mật khẩu xác nhận!', 'error'); return; }
+    setBanProcessing(true);
+    // Xác thực mật khẩu Quản lý
+    try {
+      const email = currentUser.email || `${currentUser.code.toLowerCase().trim()}@hero.local`;
+      await signInWithEmailAndPassword(auth, email, banAdminPass);
+    } catch (e) {
+      showToast('Mật khẩu Quản lý không đúng!', 'error');
+      setBanProcessing(false);
+      return;
+    }
+    try {
+      const isCurrentlyBanned = banTargetEmp.isBanned;
+      const updateData = isCurrentlyBanned
+        ? { isBanned: false, banReason: null, bannedBy: null, bannedAt: null, unbannedAt: Date.now(), unbannedBy: currentUser.name }
+        : { isBanned: true, banReason: banReason.trim(), bannedBy: currentUser.name, bannedAt: Date.now() };
+      await updateDoc(getDocRef('employees', banTargetEmp.id), updateData);
+      showToast(isCurrentlyBanned ? `Đã mở khóa tài khoản ${banTargetEmp.name}.` : `Đã khóa tài khoản ${banTargetEmp.name}.`);
+      setShowBanModal(false);
+      setBanReason('');
+      setBanAdminPass('');
+      setBanTargetEmp(null);
+    } catch (e) {
+      showToast('Lỗi khi cập nhật trạng thái: ' + e.message, 'error');
+    } finally {
+      setBanProcessing(false);
+    }
+  };
+
+  // --- UPDATED: QUY TRÌNH DUYỆT TIN NÂNG CAO ---
+
+  // 1. Hàm mở Modal xử lý (Thay thế handleApprove cũ)
+  const initiateProcess = (item, type, action) => {
+      setProcessItem(item);
+      setProcessType(type);
+      setProcessAction(action); // 'Approved' hoặc 'Rejected'
+      setProcessFeedback('');
+      setProcessImpact('NONE'); // Mặc định không tính điểm
+      setIsEditingDecision(false); // Reset mode về xử lý mới
+  };
+
+  // Hàm gọi AI trau chuốt phản hồi của Quản lý
+
+  // --- NEW: HANDLER YÊU CẦU CHỈNH SỬA (Bước 1) ---
+  const handleEditRequest = (item) => {
+      setEditAuthItem(item);
+      setShowEditSecurity(true);
+  };
+
+  // --- NEW: HANDLER SAU KHI XÁC THỰC MẬT KHẨU (Bước 2) ---
+  const handleEditAuthSuccess = () => {
+      setShowEditSecurity(false);
+      if (!editAuthItem) return;
+
+      // Pre-fill dữ liệu cũ vào Modal Xử lý
+      const type = (editAuthItem.type === 'SAFETY' || editAuthItem.severity) ? 'safety' : 'idea';
+      setProcessItem(editAuthItem);
+      setProcessType(type);
+      setProcessAction(editAuthItem.status); // Trạng thái cũ
+      setProcessFeedback(editAuthItem.managerFeedback || ''); // Feedback cũ
+      setProcessImpact('NONE'); // Reset impact để quản lý chọn lại nếu muốn
+      setIsEditingDecision(true); // BẬT CHẾ ĐỘ CHỈNH SỬA
+  };
+
+  // 2. Hàm xử lý chính thức (Được gọi khi bấm Xác nhận trên Modal)
+  const confirmProcessRequest = async () => {
+    if (!processItem) return;
+
+    // Validate: Nếu Từ chối thì bắt buộc phải có Feedback
+    if (processAction === 'Rejected' && !processFeedback.trim()) {
+        showToast("Vui lòng nhập lý do từ chối!", "error");
+        return;
+    }
+
+    setIsProcessing(true);
+    try {
+        const collectionName = processType === 'safety' ? 'safety_reports' : 'ideas';
+        
+        if (isEditingDecision) {
+            // --- LOGIC CẬP NHẬT & AUDIT (CHỈNH SỬA) ---
+            const oldStatus = processItem.status;
+            const oldFeedback = processItem.managerFeedback;
+
+            // 1. Cập nhật Firestore
+            await updateDoc(getDocRef(collectionName, processItem.id), { 
+                status: processAction,
+                managerFeedback: processFeedback,
+                processedAt: Date.now(), // Cập nhật lại thời gian xử lý
+                // Giữ nguyên người xử lý cũ hoặc cập nhật người mới (ở đây cập nhật người mới là người đang sửa)
+                processorId: currentUser.id,
+                processorName: currentUser.name,
+                processorGroup: currentUser.group,
+                processorCode: currentUser.code
+            });
+
+            // 2. Ghi Audit Log (QUAN TRỌNG)
+            await createAuditLog(
+                'MANAGER_EDIT', 
+                currentUser, 
+                processItem.id, 
+                { 
+                    type: collectionName,
+                    oldStatus: oldStatus,
+                    newStatus: processAction,
+                    oldFeedback: oldFeedback,
+                    newFeedback: processFeedback,
+                    reason: 'Manager Decision Update'
+                }
+            );
+
+            showToast("Đã cập nhật quyết định và lưu log hệ thống!");
+        } else {
+            // --- LOGIC XỬ LÝ MỚI (NHƯ CŨ) ---
+            // BƯỚC 1: Cập nhật document gốc
+            await updateDoc(getDocRef(collectionName, processItem.id), { 
+                status: processAction,
+                managerFeedback: processFeedback,
+                processedAt: Date.now(),
+                processorId: currentUser.id,
+                processorName: currentUser.name, 
+                processorGroup: currentUser.group, 
+                processorCode: currentUser.code 
+            });
+
+            // BƯỚC 2: Tự động tạo Record KPI (Nếu có Impact)
+            if (processImpact !== 'NONE') {
+                const targetEmp = employees.find(e => e.id === processItem.employeeId);
+                if (targetEmp) {
+                    let rating = processImpact === 'POSITIVE' ? 4 : 2;
+                    let category = processType === 'safety' ? 'SAFETY' : 'QUALITY';
+                    const actionText = processAction === 'Approved' ? 'ĐƯỢC DUYỆT' : 'BỊ TỪ CHỐI';
+                    const typeText = processType === 'safety' ? 'Báo cáo An toàn' : 'Sáng kiến Kaizen';
+                    const autoContent = `[HỆ THỐNG] ${typeText} ${actionText}\n- Nội dung tin: "${processItem.content}"\n- Phản hồi quản lý: ${processFeedback}`;
+
+                    await addDoc(getCollection('employee_records'), {
+                        targetId: targetEmp.id,
+                        targetName: targetEmp.name,
+                        targetGroup: targetEmp.group,
+                        targetCode: targetEmp.code,
+                        recorderId: currentUser.id,
+                        recorderName: currentUser.name,
+                        recorderGroup: currentUser.group,
+                        recorderCode: currentUser.code,
+                        rating: rating,
+                        category: category,
+                        content: autoContent,
+                        date: getCurrentDate(),
+                        timestamp: Date.now(),
+                        isDeleted: false,
+                        isSystemGenerated: true
+                    });
+                }
+            }
+            showToast(`Đã xử lý ${processType === 'safety' ? 'báo cáo' : 'sáng kiến'} thành công!`);
+        }
+        
+        // Reset state
+        setProcessItem(null);
+        setProcessFeedback('');
+        setIsEditingDecision(false);
+    } catch (e) {
+        console.error("Process Error:", e);
+        showToast("Lỗi khi xử lý tin!", "error");
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  const renderApprovalList = () => {
+    // Sắp xếp: STOP WORK và isFromChecklist lên đầu
+    const pendingSafety = safetyReports
+        .filter(r => r.status === 'Pending')
+        .sort((a, b) => {
+            if (a.isStopWork && !b.isStopWork) return -1;
+            if (!a.isStopWork && b.isStopWork) return 1;
+            if (a.isFromChecklist && !b.isFromChecklist) return -1;
+            if (!a.isFromChecklist && b.isFromChecklist) return 1;
+            return (b.timestamp || 0) - (a.timestamp || 0);
+        });
+    const pendingIdeas = ideas.filter(i => i.status === 'Pending');
+    if (pendingSafety.length === 0 && pendingIdeas.length === 0) {
+        return <div className="p-8 text-center text-gray-400 italic bg-white rounded-xl border">Không có tin chờ duyệt</div>;
+    }
+    return (
+        <div className="space-y-6">
+            {pendingSafety.length > 0 && (
+                <div>
+                    <h3 className="font-bold text-red-600 mb-3 flex items-center gap-2"><ShieldAlert size={20}/> Báo cáo An toàn ({pendingSafety.length})</h3>
+                    <div className="space-y-3">
+                        {pendingSafety.map(item => (
+                            <div key={item.id} className={`p-4 rounded-xl border shadow-sm flex justify-between items-start ${item.isStopWork ? 'bg-red-50 border-red-400 border-2' : 'bg-white border-red-100'}`}>
+                                <div className="flex-1 min-w-0 mr-3">
+                                    {/* BADGE: STOP WORK ƯU TIÊN CAO */}
+                                    {item.isStopWork && (
+                                        <div className="flex items-center gap-2 mb-2 p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase animate-pulse">
+                                            <AlertOctagon size={14}/> ⛔ STOP WORK – XỬ LÝ NGAY!
+                                        </div>
+                                    )}
+                                    {item.isFromChecklist && !item.isStopWork && (
+                                        <span className="inline-block bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded mb-2 uppercase">Từ Checklist TB</span>
+                                    )}
+                                    <p className="font-bold text-gray-800">{employees.find(e => e.id === item.employeeId)?.name}</p>
+                                    {item.equipmentId && <p className="text-xs text-indigo-600 font-bold mb-1">Thiết bị: {item.equipmentId}</p>}
+                                    <p className="text-gray-600 mt-1 text-sm">{item.content}</p>
+                                    {item.image && (
+                                        <ImagePreview src={item.image} alt="Bằng chứng" className="mt-2 h-24 w-auto rounded-lg border border-gray-200 object-cover"/>
+                                    )}
+                                    <span className="text-xs text-gray-400 mt-2 block">{item.date} • {item.severity || item.reportType || 'An toàn'}</span>
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                    <button 
+                                        className="bg-red-100 text-red-700 px-3 py-1 rounded text-sm hover:bg-red-200 transition"
+                                        onClick={() => initiateProcess(item, 'safety', 'Rejected')}
+                                    >
+                                        Từ chối
+                                    </button>
+                                    <button 
+                                        className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 shadow transition" 
+                                        onClick={() => initiateProcess(item, 'safety', 'Approved')}
+                                    >
+                                        Duyệt
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {pendingIdeas.length > 0 && (
+                <div>
+                    <h3 className="font-bold text-indigo-600 mb-3 flex items-center gap-2"><Lightbulb size={20}/> Ý tưởng Kaizen ({pendingIdeas.length})</h3>
+                    <div className="space-y-3">
+                        {pendingIdeas.map(item => (
+                            <div key={item.id} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm flex justify-between items-start">
+                                <div>
+                                    <p className="font-bold text-gray-800">{employees.find(e => e.id === item.employeeId)?.name}</p>
+                                    <p className="text-gray-600 mt-1">{item.content}</p>
+                                    {item.image && (
+                                        <ImagePreview src={item.image} alt="Minh họa" className="mt-2 h-24 w-auto rounded-lg border border-gray-200 object-cover"/>
+                                    )}
+                                    <span className="text-xs text-gray-400 mt-2 block">{item.date} • Impact: {item.impact}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button 
+                                        className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-200 transition"
+                                        onClick={() => initiateProcess(item, 'idea', 'Rejected')}
+                                    >
+                                        Từ chối
+                                    </button>
+                                    <button 
+                                        className="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700 shadow transition"
+                                        onClick={() => initiateProcess(item, 'idea', 'Approved')}
+                                    >
+                                        Duyệt
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+  };
+
+  // --- PREPARE NAV ITEMS ---
+  const navItems = [
+      { id: 'personal', label: 'Cá nhân' },
+      { id: 'overview', label: 'Tổng quan' },
+      { id: 'news', label: 'Truyền thông' },
+      { id: 'attendance_live', label: 'Điểm danh', count: todayCheckins.length }, 
+      { id: 'checklist_monitor', label: 'Giám sát TB', count: criticalIssues.length }, 
+      { id: 'approval', label: 'Báo cáo NV', count: pendingReports },
+      { id: 'record', label: 'Ghi nhận NV' }, 
+      { id: 'report', label: 'Thành tích NV' }, 
+      { id: 'employees', label: 'Nhân sự', count: pendingResets },
+      { id: 'moderation', label: 'KIỂM DUYỆT', isSpecial: true },
+      { id: 'guests', label: 'Khách & NT' }
+  ];
+
+  // Chỉ thêm tab Logs nếu là SUPER_ADMIN
+  if (currentUser.id === 'SUPER_ADMIN') {
+      navItems.push({ id: 'audit_logs', label: 'LOGS 🛡️' });
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* DOCUMENTATION CENTER */}
+      <DocumentationCenter isOpen={showDocCenter} onClose={() => setShowDocCenter(false)} />
+
+      {/* --- TRỢ LÝ WIZARD FULLSCREEN (DÀNH CHO GHI NHẬN KPI) --- */}
+      {wizardConfig.isOpen && (
+          <div className="fixed inset-0 z-[300] bg-white sm:bg-black/50 flex items-center justify-center p-0 sm:p-4 animate-fadeIn">
+              <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:max-w-md flex flex-col shadow-2xl overflow-hidden">
+                  <div className="px-5 py-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+                      <div>
+                          <h3 className="font-extrabold text-indigo-800 text-lg">Trợ lý 5W1H Ghi nhận</h3>
+                          <div className="flex gap-1.5 mt-2">
+                              {[0,1,2,3,4,5].map(i => (
+                                  <div key={i} className={`h-1.5 w-6 rounded-full transition-colors duration-300 ${i <= wizardConfig.step ? 'bg-indigo-600' : 'bg-indigo-200'}`} />
+                              ))}
+                          </div>
+                      </div>
+                      <button onClick={closeWizard} className="p-2 text-indigo-400 hover:bg-indigo-200 rounded-full transition"><X size={24}/></button>
+                  </div>
+
+                  <div className="p-5 flex-grow flex flex-col bg-white">
+                      <h4 className="text-xl font-black text-gray-800 mb-1">
+                          {WIZARD_QUESTIONS_RECORD[wizardConfig.step].title}
+                      </h4>
+                      <p className="text-sm text-gray-500 mb-4 font-medium">
+                          {WIZARD_QUESTIONS_RECORD[wizardConfig.step].desc}
+                      </p>
+                      <textarea
+                          key={`step-${wizardConfig.step}`}
+                          autoFocus
+                          className="w-full flex-grow min-h-[120px] p-4 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none text-base resize-none shadow-inner bg-gray-50"
+                          placeholder="Nhập thông tin xác thực..."
+                          value={wizardAnswers[wizardConfig.step]}
+                          onChange={(e) => handleWizardInput(e.target.value)}
+                      />
+                  </div>
+
+                  <div className="p-4 border-t bg-white shrink-0 flex gap-3 pb-safe">
+                      <button
+                          disabled={wizardConfig.step === 0}
+                          onClick={prevWizardStep}
+                          className="flex-1 py-3.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                          Quay lại
+                      </button>
+                      <button
+                          onClick={nextWizardStep}
+                          className="flex-[2] py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition flex items-center justify-center gap-2"
+                      >
+                          {wizardConfig.step === 5 ? <><CheckCircle2 size={18}/> Hoàn thành</> : 'Tiếp tục'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <div className="bg-white border-b px-6 py-4 flex flex-col md:flex-row justify-between items-center sticky top-0 z-50 shadow-sm gap-3 md:gap-0">
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+             <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg"><Activity /></div>
+                <div>
+                    <h1 className="text-xl font-bold text-gray-800">QUẢN LÝ</h1>
+                    {currentUser && <p className="text-xs text-gray-500">Xin chào, {currentUser.name}</p>}
+                </div>
+             </div>
+             {/* Mobile Logout Button (Visible only on mobile) */}
+             <button onClick={handleLogout} className="md:hidden text-red-600 bg-red-50 p-2 rounded-lg"><LogOut size={20}/></button>
+             {/* Mobile Help Button */}
+             <button onClick={() => setShowDocCenter(true)} className="md:hidden text-indigo-600 bg-indigo-50 p-2 rounded-lg"><HelpCircle size={20}/></button>
+        </div>
+        
+        {/* NHIỆM VỤ 1: OPTIMIZED MOBILE NAVIGATION BAR - ẨN TRÊN MOBILE, CHỈ HIỆN TRÊN DESKTOP */}
+        <div className="hidden md:flex gap-2 overflow-x-auto pb-2 md:pb-0 hide-scrollbar bg-gray-100 p-1 rounded-lg w-full md:w-auto no-scrollbar">
+            {navItems.map(tab => (
+                <button 
+                    key={tab.id} 
+                    onClick={() => { setActiveTab(tab.id); if(tab.id === 'employees') setFilterReset(false); }}
+                    className={`px-4 py-2 rounded-md text-sm font-bold transition flex items-center gap-2 whitespace-nowrap flex-shrink-0 ${
+                        activeTab === tab.id 
+                            ? (tab.isSpecial ? 'bg-red-600 text-white shadow' : 'bg-white shadow text-indigo-600') 
+                            : (tab.isSpecial ? 'text-red-600 hover:bg-red-50' : 'text-gray-500 hover:text-gray-700')
+                    }`}
+                >
+                    {tab.label}
+                    {tab.count > 0 && <span className={`text-white text-[10px] px-1.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center ${tab.isSpecial ? 'bg-white/20' : 'bg-red-500'}`}>{tab.count}</span>}
+                </button>
+            ))}
+        </div>
+
+        <button onClick={handleLogout} className="hidden md:block text-sm text-red-600 hover:bg-red-50 px-3 py-1 rounded transition">Thoát</button>
+        {/* NÚT HƯỚNG DẪN ? - ADMIN */}
+        <button
+          onClick={() => setShowDocCenter(true)}
+          className="hidden md:flex items-center gap-1.5 text-sm text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition border border-indigo-100 font-bold"
+          title="Hướng dẫn sử dụng"
+        >
+          <HelpCircle size={16}/> Hướng dẫn
+        </button>
+      </div>
+
+      {(pendingResets > 0 || pendingReports > 0) && (
+          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2 flex gap-4 overflow-x-auto">
+              {stopWorkCount > 0 && (
+                  <button onClick={handleApprovalNotificationClick} className="flex items-center gap-2 text-xs font-black text-white bg-red-600 px-3 py-1.5 rounded-full border border-red-700 shadow-sm hover:bg-red-700 transition animate-pulse cursor-pointer">
+                      <AlertOctagon size={14}/> ⛔ {stopWorkCount} STOP WORK chờ xử lý! <ArrowRightCircle size={12}/>
+                  </button>
+              )}
+              {pendingResets > 0 && (
+                  <button onClick={handleResetNotificationClick} className="flex items-center gap-2 text-xs font-bold text-red-600 bg-white px-3 py-1.5 rounded-full border border-red-200 shadow-sm hover:bg-red-50 transition animate-pulse cursor-pointer">
+                      <Key size={14}/> {pendingResets} yêu cầu Reset Mật khẩu <ArrowRightCircle size={12}/>
+                  </button>
+              )}
+              {pendingReports > 0 && (
+                  <button onClick={handleApprovalNotificationClick} className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-white px-3 py-1.5 rounded-full border border-indigo-200 shadow-sm hover:bg-indigo-50 transition cursor-pointer">
+                      <Bell size={14}/> {pendingReports} tin cần duyệt <ArrowRightCircle size={12}/>
+                  </button>
+              )}
+          </div>
+      )}
+
+      {/* THÊM PB-20 TRÊN MOBILE ĐỂ KHÔNG BỊ THANH BOTTOM NAV CHE KHUẤT */}
+      <div className="p-4 md:p-6 max-w-7xl mx-auto w-full flex-grow pb-24 md:pb-6">
+        
+        {/* --- GIAO DIỆN MENU MỞ RỘNG (CHỈ DÀNH CHO MOBILE KHI BẤM TAB "THÊM") --- */}
+        {activeTab === 'menu' && (
+            <div className="animate-fadeIn space-y-6">
+                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                    <div className="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4">
+                        <Activity size={120} />
+                    </div>
+                    <h2 className="text-2xl font-extrabold relative z-10">Quản lý Mở rộng</h2>
+                    <p className="text-indigo-100 text-sm mt-1 relative z-10">Các chức năng quản trị và báo cáo chi tiết.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setActiveTab('news')} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95">
+                        <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><Megaphone size={24}/></div>
+                        <span className="font-bold text-gray-700 text-sm">Truyền thông</span>
+                    </button>
+                    
+                    <button onClick={() => setActiveTab('attendance_live')} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95 relative">
+                        <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><Clock size={24}/></div>
+                        <span className="font-bold text-gray-700 text-sm">Điểm danh</span>
+                        <span className="absolute top-3 right-3 bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{todayCheckins.length}</span>
+                    </button>
+
+                    <button onClick={() => setActiveTab('report')} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95">
+                        <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center"><FileSpreadsheet size={24}/></div>
+                        <span className="font-bold text-gray-700 text-sm">Thành tích NV</span>
+                    </button>
+
+                    <button onClick={() => { setActiveTab('employees'); setFilterReset(false); }} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95 relative">
+                        <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center"><Users size={24}/></div>
+                        <span className="font-bold text-gray-700 text-sm">Nhân sự</span>
+                        {pendingResets > 0 && <span className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">{pendingResets}</span>}
+                    </button>
+
+                    <button onClick={() => setActiveTab('personal')} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95">
+                        <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center"><History size={24}/></div>
+                        <span className="font-bold text-gray-700 text-sm">Việc Cá nhân</span>
+                    </button>
+                    
+                    <button onClick={() => setActiveTab('moderation')} className="bg-red-50 p-5 rounded-2xl shadow-sm border border-red-100 flex flex-col items-center gap-3 hover:bg-red-100 transition active:scale-95">
+                        <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><ShieldAlert size={24}/></div>
+                        <span className="font-bold text-red-700 text-sm">Kiểm duyệt</span>
+                    </button>
+
+                    {/* Button Logs cho Mobile Menu (Chỉ Super Admin) */}
+                    {currentUser.id === 'SUPER_ADMIN' && (
+                        <button onClick={() => setActiveTab('audit_logs')} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3 hover:bg-indigo-50 transition active:scale-95">
+                            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><ShieldAlert size={24}/></div>
+                            <span className="font-bold text-gray-700 text-sm">System Logs</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'overview' && (
+            <div className="space-y-6 animate-fadeIn">
+                {/* 1. TOP STATS CARDS (REDESIGNED COMMAND CENTER STYLE) */}
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center gap-2 hover:shadow-md transition">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0"><Users size={20}/></div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Nhân sự</p>
+                            <p className="text-xl font-black text-gray-800">{employees.length}</p>
+                        </div>
+                    </div>
+                    {/* NEW: ĐIỂM DANH */}
+                    <div onClick={() => setOverviewModalType('attendance')} className="cursor-pointer bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center gap-2 hover:shadow-md hover:border-green-400 hover:ring-2 hover:ring-green-100 transition active:scale-95">
+                        <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600 shrink-0"><Clock size={20}/></div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Điểm danh</p>
+                            <p className="text-xl font-black text-gray-800">{todayCheckins.length}</p>
+                        </div>
+                    </div>
+                    <div onClick={() => setOverviewModalType('checklist')} className="cursor-pointer bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center gap-2 hover:shadow-md hover:border-indigo-400 hover:ring-2 hover:ring-indigo-100 transition active:scale-95">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0"><ClipboardCheck size={20}/></div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Checklist</p>
+                            <p className="text-xl font-black text-gray-800">{checklists.length}</p>
+                        </div>
+                    </div>
+                    <div onClick={() => setOverviewModalType('idea')} className="cursor-pointer bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center gap-2 hover:shadow-md hover:border-purple-400 hover:ring-2 hover:ring-purple-100 transition active:scale-95">
+                        <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 shrink-0"><Lightbulb size={20}/></div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Sáng kiến</p>
+                            <p className="text-xl font-black text-gray-800">{ideas.length}</p>
+                        </div>
+                    </div>
+                    <div onClick={() => setOverviewModalType('safety')} className="cursor-pointer bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center gap-2 hover:shadow-md hover:border-red-400 hover:ring-2 hover:ring-red-100 transition active:scale-95">
+                        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 shrink-0"><ShieldAlert size={20}/></div>
+                        <div>
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Báo cáo AT</p>
+                            <p className="text-xl font-black text-gray-800">{safetyReports.length}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. MIDDLE ROW: WALL OF FAME & EQUIPMENT HEALTH */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* BẢNG VÀNG THÀNH TÍCH */}
+                    <Card className="lg:col-span-2 bg-gradient-to-br from-yellow-50 to-white border-yellow-200 relative overflow-hidden">
+                        <div className="absolute right-0 top-0 opacity-5 transform translate-x-1/4 -translate-y-1/4">
+                            <Trophy size={200} />
+                        </div>
+                        <h3 className="font-extrabold text-yellow-800 text-lg flex items-center gap-2 mb-4 relative z-10 uppercase tracking-wide">
+                            <Trophy size={20} className="text-yellow-600"/> Những Đóng Góp Tích Cực (Tháng này)
+                        </h3>
+                        
+                        {topPerformers.length === 0 ? (
+                            <div className="text-center py-8 text-yellow-600/60 italic relative z-10 bg-white/50 rounded-xl">
+                                Chưa có đủ dữ liệu đánh giá 4-5 sao trong tháng này.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
+                                {topPerformers.map((emp, idx) => {
+                                    let bgClass = "bg-white";
+                                    let iconColor = "text-yellow-500";
+                                    if (idx === 0) { bgClass = "bg-gradient-to-b from-yellow-100 to-white ring-2 ring-yellow-400 shadow-md transform lg:-translate-y-2"; iconColor = "text-yellow-500 fill-yellow-500"; }
+                                    else if (idx === 1) { bgClass = "bg-gradient-to-b from-gray-100 to-white border border-gray-300"; iconColor = "text-gray-400 fill-gray-400"; }
+                                    else { bgClass = "bg-gradient-to-b from-orange-100 to-white border border-orange-300"; iconColor = "text-orange-500 fill-orange-500"; }
+
+                                    return (
+                                        <div key={emp.id} 
+                                             onClick={() => setDetailedEmployeeId(emp.id)} // BỔ SUNG: Liên kết mạng nhện vào Hồ sơ
+                                             className={`cursor-pointer rounded-2xl p-4 flex flex-col items-center text-center ${bgClass} transition-all hover:shadow-xl hover:scale-105 group/top`}
+                                        >
+                                            <div className="relative mb-2">
+                                                <Avatar src={emp.avatar} alt={emp.name} size="lg"/>
+                                                <div className={`absolute -bottom-2 right-0 bg-white p-1 rounded-full shadow ${idx===0 ? 'ring-2 ring-yellow-400' : ''}`}>
+                                                    {idx === 0 ? <Trophy size={20} className={iconColor}/> : <Medal size={20} className={iconColor}/>}
+                                                </div>
+                                            </div>
+                                            <p className="font-extrabold text-gray-800 text-base group-hover/top:text-indigo-600 transition">{emp.name}</p>
+                                            <p className="text-xs font-medium text-gray-500 mb-2">{emp.code} • {emp.group}</p>
+                                            <div className="mt-auto w-full bg-yellow-50 rounded-lg py-1.5 border border-yellow-100 text-yellow-700 font-bold text-xs flex justify-center items-center gap-1 group-hover/top:bg-yellow-100 transition">
+                                                <TrendingUp size={12}/> {emp.score} Điểm tích cực
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </Card>
+
+                    {/* TÌNH TRẠNG THIẾT BỊ (EQUIPMENT HEALTH) */}
+                    <Card className="flex flex-col">
+                        <h3 className="font-bold text-gray-800 text-base flex items-center gap-2 mb-4">
+                            <HeartPulse className="text-indigo-600"/> Sức khỏe Thiết bị (Hiện tại)
+                        </h3>
+                        <div className="flex-grow flex flex-col justify-center gap-4">
+                            <div className="text-center">
+                                <span className="text-4xl font-black text-gray-800">{equipmentHealth.total}</span>
+                                <span className="block text-xs font-bold text-gray-500 uppercase mt-1">TB Đang hoạt động</span>
+                            </div>
+                            
+                            {/* Visual Progress Bar */}
+                            <div className="space-y-3 mt-2">
+                                <div>
+                                    <div className="flex justify-between text-xs font-bold mb-1">
+                                        <span className="text-green-600">Tốt ({equipmentHealth.ok})</span>
+                                        <span className="text-gray-500">{equipmentHealth.total > 0 ? Math.round((equipmentHealth.ok/equipmentHealth.total)*100) : 0}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-2">
+                                        <div className="bg-green-500 h-2 rounded-full" style={{width: `${equipmentHealth.total > 0 ? (equipmentHealth.ok/equipmentHealth.total)*100 : 0}%`}}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs font-bold mb-1">
+                                        <span className="text-yellow-600">Cảnh báo ({equipmentHealth.warning})</span>
+                                        <span className="text-gray-500">{equipmentHealth.total > 0 ? Math.round((equipmentHealth.warning/equipmentHealth.total)*100) : 0}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-2">
+                                        <div className="bg-yellow-400 h-2 rounded-full" style={{width: `${equipmentHealth.total > 0 ? (equipmentHealth.warning/equipmentHealth.total)*100 : 0}%`}}></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs font-bold mb-1">
+                                        <span className="text-red-600">Hư hỏng/Dừng ({equipmentHealth.critical})</span>
+                                        <span className="text-gray-500">{equipmentHealth.total > 0 ? Math.round((equipmentHealth.critical/equipmentHealth.total)*100) : 0}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-2">
+                                        <div className="bg-red-500 h-2 rounded-full" style={{width: `${equipmentHealth.total > 0 ? (equipmentHealth.critical/equipmentHealth.total)*100 : 0}%`}}></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setActiveTab('checklist_monitor')}
+                                className="mt-2 w-full py-2 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition"
+                            >
+                                Xem chi tiết Giám sát &rarr;
+                            </button>
+                        </div>
+                    </Card>
+                </div>
+
+                {/* 3. ACTIVITY FEED SECTION */}
+                <div>
+                    <h3 className="font-bold text-gray-700 text-lg flex items-center gap-2 mb-4">
+                        <Activity className="text-indigo-600"/> Bảng tin Hoạt động (Activity Feed)
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 max-w-3xl mx-auto">
+                        {activityFeed.map(item => (
+                            <ActivityFeedCard 
+                                key={item.id}
+                                item={item} 
+                                employees={employees} 
+                                currentUser={currentUser} 
+                                onPostComment={handlePostComment} 
+                                commentText={commentText} 
+                                setCommentText={setCommentText} 
+                                onUserClick={(empId) => setDetailedEmployeeId(empId)} // LIÊN KẾT NHÂN VIÊN
+                                onEditRequest={handleEditRequest} // TRUYỀN HÀM XỬ LÝ SỬA
+                                onEquipmentClick={setSelectedEquipmentId} // LIÊN KẾT THIẾT BỊ
+                            />
+                        ))}
+                        {activityFeed.length === 0 && (
+                            <div className="text-center py-10 text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-300">
+                                Chưa có hoạt động nào.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* OVERVIEW DRILL-DOWN MODAL */}
+        <Modal 
+            isOpen={!!overviewModalType} 
+            onClose={() => setOverviewModalType(null)} 
+            title={
+                overviewModalType === 'attendance' ? `Điểm danh Hôm nay (${getCurrentDate()})` :
+                overviewModalType === 'checklist' ? 'Tóm tắt Lượt Checklist (Mới nhất)' :
+                overviewModalType === 'safety' ? 'Các Báo cáo An toàn & Hoạt động' :
+                overviewModalType === 'idea' ? 'Sáng kiến Kaizen' : ''
+            }
+        >
+                    <div className="space-y-3">
+                        {/* VIEW: ATTENDANCE */}
+                        {overviewModalType === 'attendance' && (
+                            todayCheckins.length === 0 ? <p className="text-center text-gray-500 py-4 italic">Chưa có ai điểm danh hôm nay.</p> :
+                            todayCheckins.map(log => {
+                                const emp = employees.find(e => e.id === log.employeeId);
+                                return (
+                                    <div key={log.id} className="p-3 border rounded-xl bg-gray-50 flex justify-between items-center hover:bg-white transition shadow-sm">
+                                        <div 
+                                            className="flex items-center gap-3 cursor-pointer group"
+                                            onClick={() => setDetailedEmployeeId(emp?.id)} // LIÊN KẾT NHÂN VIÊN
+                                        >
+                                            <Avatar src={emp?.avatar} alt={log.name} size="sm"/>
+                                            <div>
+                                                <p className="font-bold text-gray-800 text-sm group-hover:text-indigo-600 transition">{log.name}</p>
+                                                <p className="text-xs text-gray-500">{emp?.code} • <GroupBadge group={emp?.group || 'Khác'} /></p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="font-mono text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded text-sm">{log.time}</span>
+                                            <span className="block text-[10px] font-bold text-gray-400 mt-1 uppercase">Ca {log.shift}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+
+                        {/* VIEW: CHECKLIST */}
+                        {overviewModalType === 'checklist' && (
+                            checklists.length === 0 ? <p className="text-center text-gray-500 py-4 italic">Chưa có checklist nào.</p> :
+                            checklists.slice(0, 50).map(log => (
+                                <div key={log.id} onClick={() => setSelectedChecklistLog(log)} className="p-3 border rounded-xl bg-gray-50 flex justify-between items-start hover:bg-white transition shadow-sm cursor-pointer hover:border-indigo-300">
+                                    <div>
+                                        <div 
+                                            className="flex items-center gap-2 mb-1 cursor-pointer hover:text-indigo-600 transition"
+                                            onClick={(e) => { e.stopPropagation(); setSelectedEquipmentId(log.equipmentId); }} // LIÊN KẾT THIẾT BỊ
+                                        >
+                                            <span className="font-black text-gray-800 hover:text-indigo-600 transition">{log.equipmentId}</span>
+                                            <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold uppercase">{log.type}</span>
+                                        </div>
+                                        <p 
+                                            className="text-xs text-gray-600 flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition w-fit"
+                                            onClick={(e) => { e.stopPropagation(); setDetailedEmployeeId(log.reporterId); }} // LIÊN KẾT NHÂN VIÊN
+                                        >
+                                            <UserCheck size={12} className="text-indigo-400"/> {log.reporterName}
+                                        </p>
+                                        <p className="text-[10px] text-gray-400 mt-1">Ca {log.shift} • {log.date}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                        {renderIssueSeverity(log)}
+                                        {log.fuel && <span className="text-[10px] font-mono bg-orange-50 text-orange-700 px-1.5 rounded border border-orange-200">⛽ {log.fuel}%</span>}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+
+                        {/* VIEW: SAFETY */}
+                        {overviewModalType === 'safety' && (
+                            safetyReports.length === 0 ? <p className="text-center text-gray-500 py-4 italic">Chưa có báo cáo nào.</p> :
+                            safetyReports.slice(0, 50).map(report => (
+                                <div key={report.id} onClick={() => setSelectedFeedItem(report)} className="p-2 border-l-4 border-l-red-500 rounded-lg bg-red-50/30 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-red-100 transition">
+                                    <div className="flex justify-between items-center">
+                                        <span 
+                                            className="font-bold text-gray-800 text-xs hover:text-indigo-600 transition truncate max-w-[60%]"
+                                            onClick={(e) => { e.stopPropagation(); setDetailedEmployeeId(report.employeeId); }} // LIÊN KẾT NHÂN VIÊN
+                                        >
+                                            {employees.find(e => e.id === report.employeeId)?.name}
+                                        </span>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${report.status === 'Approved' ? 'bg-green-100 text-green-700' : report.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                            {report.status === 'Approved' ? 'Đã xử lý' : report.status === 'Rejected' ? 'Từ chối' : 'Pending'}
+                                        </span>
+                                    </div>
+                                    
+                                    {/* Hỗ trợ hiển thị Tiêu đề của Quản lý nếu có */}
+                                    {report.title && <h5 className="font-bold text-indigo-900 text-xs truncate">{report.title}</h5>}
+                                    
+                                    <SmartContent text={report.content} onEquipmentClick={(code) => { setSelectedEquipmentId(code); setOverviewModalType(null); }} isCompact={true} isSafety={true} />
+                                    
+                                    <div className="text-[9px] text-gray-400 flex items-center gap-2 mt-1">
+                                        <Clock size={10}/> {report.date}
+                                        {report.reportType ? (
+                                            <span className="bg-white px-1 border border-indigo-200 rounded text-indigo-600 font-bold">{report.reportType}</span>
+                                        ) : (
+                                            <span className="bg-white px-1 border rounded text-red-600 font-bold">{report.severity}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+
+                        {/* VIEW: IDEA */}
+                        {overviewModalType === 'idea' && (
+                            ideas.length === 0 ? <p className="text-center text-gray-500 py-4 italic">Chưa có sáng kiến nào.</p> :
+                            ideas.slice(0, 50).map(idea => (
+                                <div key={idea.id} onClick={() => setSelectedFeedItem(idea)} className="p-2 border-l-4 border-l-purple-500 rounded-lg bg-purple-50/30 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-purple-100 transition">
+                                    <div className="flex justify-between items-center">
+                                        <span 
+                                            className="font-bold text-gray-800 text-xs hover:text-indigo-600 transition truncate max-w-[60%]"
+                                            onClick={(e) => { e.stopPropagation(); setDetailedEmployeeId(idea.employeeId); }} // LIÊN KẾT NHÂN VIÊN
+                                        >
+                                            {employees.find(e => e.id === idea.employeeId)?.name}
+                                        </span>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${idea.status === 'Approved' ? 'bg-green-100 text-green-700' : idea.status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                            {idea.status === 'Approved' ? 'Đã duyệt' : idea.status === 'Rejected' ? 'Từ chối' : 'Pending'}
+                                        </span>
+                                    </div>
+                                    
+                                    <SmartContent text={idea.content} onEquipmentClick={(code) => { setSelectedEquipmentId(code); setOverviewModalType(null); }} isCompact={true} />
+                                    
+                                    <div className="text-[9px] text-gray-400 flex items-center gap-2 mt-1">
+                                        <Clock size={10}/> {idea.date}
+                                        <span className="bg-white px-1 border rounded text-purple-600 font-bold">Impact: {idea.impact}</span>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </Modal>
+            </div>
+        )}
+
+        {/* --- TAB: TRUYỀN THÔNG (BẢN TIN) --- */}
+        {activeTab === 'news' && (
+            <div className="space-y-6 animate-fadeIn">
+                {/* =====================================================
+                    PHẦN MỚI: BỘ LỌC & TỔNG HỢP BÁO CÁO HIỆN TRƯỜNG
+                    ===================================================== */}
+                <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm overflow-hidden">
+                    <div 
+                        className="flex items-center justify-between p-4 cursor-pointer hover:bg-indigo-50 transition"
+                        onClick={() => setShowFieldReportSummary(v => !v)}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                <Filter size={18}/>
+                            </div>
+                            <div>
+                                <p className="font-bold text-gray-800 text-sm">Tổng hợp Báo cáo Hiện trường theo Tháng</p>
+                                <p className="text-xs text-gray-400 mt-0.5">Lọc và xem lại các báo cáo hiện trường của Quản lý, xuất báo cáo A4</p>
+                            </div>
+                        </div>
+                        <ChevronDown size={18} className={`text-indigo-400 transition-transform duration-300 ${showFieldReportSummary ? 'rotate-180' : ''}`}/>
+                    </div>
+
+                    {showFieldReportSummary && (() => {
+                        // Danh sách 6 loại báo cáo hiện trường
+                        const FIELD_REPORT_TYPES = [
+                            { id: 'Pre-shift toolbox talk', label: '🗣️ Toolbox Talk', short: 'Toolbox' },
+                            { id: 'Leader Led Safety Gemba', label: '🔍 Safety Gemba', short: 'Gemba' },
+                            { id: 'Leader Led Activities', label: '👨‍✈️ Led Activities', short: 'Activities' },
+                            { id: 'Critical Control Assessment ( CCA)', label: '⚠️ CCA', short: 'CCA' },
+                            { id: 'SQDC', label: '📊 SQDC', short: 'SQDC' },
+                            { id: 'Other Gemba', label: '🌐 Other Gemba', short: 'Other' },
+                        ];
+
+                        const toggleTypeFilter = (typeId) => {
+                            setFieldReportTypeFilter(prev =>
+                                prev.includes(typeId) ? prev.filter(t => t !== typeId) : [...prev, typeId]
+                            );
+                            setSelectedFieldReportIds(new Set()); // reset selection khi đổi filter
+                        };
+
+                        // Lọc theo tháng
+                        const byMonth = safetyReports.filter(r => {
+                            if (!r.reportType) return false;
+                            if (!fieldReportMonth) return true;
+                            const dateStr = r.date || '';
+                            const ts = r.timestamp;
+                            if (dateStr) {
+                                const parts = dateStr.split('/');
+                                if (parts.length === 3) {
+                                    const ym = `${parts[2]}-${parts[1].padStart(2,'0')}`;
+                                    return ym === fieldReportMonth;
+                                }
+                            }
+                            if (ts) {
+                                const d = new Date(ts);
+                                const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                                return ym === fieldReportMonth;
+                            }
+                            return false;
+                        });
+
+                        // Lọc thêm theo loại đã chọn
+                        const filteredFieldReports = (fieldReportTypeFilter.length === 0
+                            ? byMonth
+                            : byMonth.filter(r => fieldReportTypeFilter.includes(r.reportType))
+                        ).sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+
+                        const totalImgs = filteredFieldReports.reduce((sum, r) => sum + (r.images ? r.images.length : (r.image ? 1 : 0)), 0);
+                        const riskCount = filteredFieldReports.filter(r => r.isSafetyRisk).length;
+
+                        // Các báo cáo được chọn (subset để xuất)
+                        const selectedForExport = selectedFieldReportIds.size === 0
+                            ? filteredFieldReports
+                            : filteredFieldReports.filter(r => selectedFieldReportIds.has(r.id));
+
+                        const toggleSelectReport = (id) => {
+                            setSelectedFieldReportIds(prev => {
+                                const next = new Set(prev);
+                                next.has(id) ? next.delete(id) : next.add(id);
+                                return next;
+                            });
+                        };
+                        const selectAll = () => setSelectedFieldReportIds(new Set(filteredFieldReports.map(r => r.id)));
+                        const clearSelection = () => setSelectedFieldReportIds(new Set());
+
+                        return (
+                            <div className="border-t border-indigo-100 p-4 space-y-4">
+
+                                {/* ROW 1: CHỌN THÁNG */}
+                                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                                    <div className="flex items-center gap-2">
+                                        <CalendarDays size={15} className="text-indigo-500 shrink-0"/>
+                                        <label className="text-xs font-bold text-gray-500 uppercase whitespace-nowrap">Tháng:</label>
+                                        <input
+                                            type="month"
+                                            value={fieldReportMonth}
+                                            onChange={e => { setFieldReportMonth(e.target.value); setSelectedFieldReportIds(new Set()); }}
+                                            className="p-2 border border-gray-200 rounded-lg text-sm font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-400 outline-none bg-indigo-50"
+                                        />
+                                    </div>
+                                    <div className="text-xs text-gray-400 italic hidden sm:block flex-1">
+                                        {byMonth.length} báo cáo trong tháng này
+                                    </div>
+                                </div>
+
+                                {/* ROW 2: FILTER MULTI-CHỌN NHÓM BÁO CÁO */}
+                                <div>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 tracking-wide">Lọc theo nhóm báo cáo (có thể chọn nhiều):</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={() => { setFieldReportTypeFilter([]); setSelectedFieldReportIds(new Set()); }}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${fieldReportTypeFilter.length === 0 ? 'bg-indigo-600 text-white border-indigo-600 shadow' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}
+                                        >
+                                            Tất cả ({byMonth.length})
+                                        </button>
+                                        {FIELD_REPORT_TYPES.map(ft => {
+                                            const cnt = byMonth.filter(r => r.reportType === ft.id).length;
+                                            const active = fieldReportTypeFilter.includes(ft.id);
+                                            return (
+                                                <button
+                                                    key={ft.id}
+                                                    onClick={() => toggleTypeFilter(ft.id)}
+                                                    disabled={cnt === 0}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow' : cnt === 0 ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                                >
+                                                    {ft.label} <span className={`ml-1 ${active ? 'text-indigo-200' : 'text-gray-400'}`}>{cnt}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* ROW 3: STATS */}
+                                {filteredFieldReports.length > 0 && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                        <div className="bg-indigo-50 rounded-xl p-2.5 text-center border border-indigo-100">
+                                            <p className="text-xl font-black text-indigo-700">{filteredFieldReports.length}</p>
+                                            <p className="text-[10px] font-bold text-indigo-400 uppercase">Báo cáo lọc được</p>
+                                        </div>
+                                        <div className="bg-purple-50 rounded-xl p-2.5 text-center border border-purple-100">
+                                            <p className="text-xl font-black text-purple-700">{totalImgs}</p>
+                                            <p className="text-[10px] font-bold text-purple-400 uppercase">Hình ảnh</p>
+                                        </div>
+                                        <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
+                                            <p className="text-xl font-black text-red-600">{riskCount}</p>
+                                            <p className="text-[10px] font-bold text-red-400 uppercase">Có rủi ro</p>
+                                        </div>
+                                        <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">
+                                            <p className="text-xl font-black text-green-700">{new Set(filteredFieldReports.map(r=>r.employeeId)).size}</p>
+                                            <p className="text-[10px] font-bold text-green-400 uppercase">Quản lý</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ROW 4: DANH SÁCH VỚI CHECKBOX CHỌN TỪNG BÁO CÁO */}
+                                {filteredFieldReports.length === 0 ? (
+                                    <div className="text-center py-8 text-gray-400 italic text-sm bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                        Không có báo cáo hiện trường nào phù hợp.
+                                    </div>
+                                ) : (
+                                    <div>
+                                        {/* Toolbar chọn */}
+                                        <div className="flex items-center justify-between mb-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold text-gray-600">Chọn để xuất:</span>
+                                                <button onClick={selectAll} className="text-[11px] font-bold text-indigo-600 hover:underline px-2 py-0.5 bg-indigo-50 rounded">Chọn tất cả</button>
+                                                {selectedFieldReportIds.size > 0 && (
+                                                    <button onClick={clearSelection} className="text-[11px] font-bold text-gray-500 hover:underline px-2 py-0.5 bg-white rounded border border-gray-200">Bỏ chọn</button>
+                                                )}
+                                            </div>
+                                            <span className={`text-[11px] font-bold ${selectedFieldReportIds.size > 0 ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                {selectedFieldReportIds.size > 0 ? `${selectedFieldReportIds.size}/${filteredFieldReports.length} đã chọn` : `Mặc định: xuất tất cả ${filteredFieldReports.length}`}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+                                            {filteredFieldReports.map((report, idx) => {
+                                                const author = employees.find(e => e.id === report.employeeId);
+                                                const images = report.images || (report.image ? [{ src: report.image }] : []);
+                                                const isChecked = selectedFieldReportIds.size === 0 || selectedFieldReportIds.has(report.id);
+                                                const isExplicitlySelected = selectedFieldReportIds.has(report.id);
+                                                return (
+                                                    <div
+                                                        key={report.id || idx}
+                                                        onClick={() => toggleSelectReport(report.id)}
+                                                        className={`cursor-pointer rounded-xl border p-3 transition ${
+                                                            report.isSafetyRisk
+                                                                ? isExplicitlySelected || selectedFieldReportIds.size === 0
+                                                                    ? 'border-l-4 border-l-red-500 border-red-200 bg-red-50/40'
+                                                                    : 'border-l-4 border-l-red-200 border-red-100 bg-white opacity-50'
+                                                                : isExplicitlySelected || selectedFieldReportIds.size === 0
+                                                                    ? 'border-gray-200 bg-white shadow-sm'
+                                                                    : 'border-gray-100 bg-gray-50 opacity-50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-2.5">
+                                                            {/* Checkbox visual */}
+                                                            <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition ${isExplicitlySelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-gray-300'}`}>
+                                                                {isExplicitlySelected && <CheckCircle2 size={10} className="text-white"/>}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${report.isSafetyRisk ? 'bg-red-50 text-red-700 border-red-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>{report.reportType}</span>
+                                                                    {report.isSafetyRisk && <span className="text-[10px] font-black text-red-600">⚠ RỦI RO</span>}
+                                                                    <span className="text-[10px] text-gray-400">{report.date}</span>
+                                                                    {images.length > 0 && <span className="text-[10px] text-gray-400 flex items-center gap-0.5"><Camera size={9}/> {images.length}</span>}
+                                                                    <span className="ml-auto text-[10px] font-bold text-gray-500 shrink-0">{author ? author.name : report.employeeId}</span>
+                                                                </div>
+                                                                <p className={`text-xs leading-relaxed line-clamp-2 ${report.isSafetyRisk ? 'text-red-700 font-medium' : 'text-gray-600'}`}>{report.content}</p>
+                                                                {images.length > 0 && (
+                                                                    <div className="flex gap-1 mt-1.5">
+                                                                        {images.slice(0,3).map((img, i) => (
+                                                                            <div key={i} className="w-10 h-10 rounded border border-gray-200 overflow-hidden bg-gray-100 shrink-0">
+                                                                                <img src={img.src || img} alt="" className="w-full h-full object-cover"/>
+                                                                            </div>
+                                                                        ))}
+                                                                        {images.length > 3 && <div className="w-10 h-10 rounded border border-gray-200 bg-gray-50 flex items-center justify-center text-[10px] font-bold text-gray-400">+{images.length-3}</div>}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ROW 5: NÚT XUẤT PDF */}
+                                {filteredFieldReports.length > 0 && (
+                                    <div className="flex justify-end pt-2 border-t border-indigo-50">
+                                        <button
+                                            onClick={() => handleExportFieldReportSummary(selectedForExport)}
+                                            disabled={isProcessing || selectedForExport.length === 0}
+                                            className="flex items-center gap-2 px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <FileText size={16}/>}
+                                            Xuất PDF Tờ báo A4
+                                            <span className="bg-white/20 px-2 py-0.5 rounded-lg text-xs">{selectedForExport.length} báo cáo</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
+
+                {/* =====================================================
+                    PHẦN CŨ: SOẠN THÔNG BÁO & DANH SÁCH ĐÃ ĐĂNG (GIỮ NGUYÊN)
+                    ===================================================== */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+                    <Card>
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
+                            <Megaphone className="text-indigo-600"/> Soạn Thông báo Mới
+                        </h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Mức độ / Thể loại</label>
+                                <select 
+                                    className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+                                    value={newsType}
+                                    onChange={(e) => setNewsType(e.target.value)}
+                                >
+                                    <option value="INFO">Thông báo thông thường</option>
+                                    <option value="WARNING">Cảnh báo / Chú ý</option>
+                                    <option value="URGENT">Khẩn cấp</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Tiêu đề</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="VD: Nhắc nhở quy định an toàn..."
+                                    value={newsTitle}
+                                    onChange={(e) => setNewsTitle(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">Nội dung chi tiết</label>
+                                <textarea 
+                                    className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"
+                                    placeholder="Nội dung thông báo tới toàn thể nhân viên..."
+                                    value={newsContent}
+                                    onChange={(e) => setNewsContent(e.target.value)}
+                                />
+                            </div>
+                            <button 
+                                onClick={handlePostNews}
+                                disabled={isProcessing}
+                                className="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow"
+                            >
+                                {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Đăng lên Bảng tin
+                            </button>
+                        </div>
+                    </Card>
+                </div>
+
+                <div className="lg:col-span-2 space-y-4">
+                    <Card className="h-full">
+                        <div className="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 className="font-bold text-gray-700">Các Thông báo đã đăng ({news.length})</h3>
+                        </div>
+                        {news.length === 0 ? (
+                            <div className="text-center py-10 text-gray-400 italic">Chưa có thông báo nào.</div>
+                        ) : (
+                            <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                                {news.map(item => (
+                                    <div key={item.id} className="bg-gray-50 p-4 rounded-xl border border-gray-200 relative group">
+                                        <button 
+                                            onClick={() => handleDeleteNews(item.id)}
+                                            className="absolute top-2 right-2 p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition opacity-0 group-hover:opacity-100"
+                                            title="Xóa tin này"
+                                        >
+                                            <Trash2 size={14}/>
+                                        </button>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                item.type === 'URGENT' ? 'bg-red-100 text-red-700' : 
+                                                item.type === 'WARNING' ? 'bg-yellow-100 text-yellow-700' : 
+                                                'bg-blue-100 text-blue-700'
+                                            }`}>
+                                                {item.type}
+                                            </span>
+                                            <span className="text-xs text-gray-400">{item.date}</span>
+                                        </div>
+                                        <h4 className="font-bold text-gray-800 text-base mb-1">{item.title}</h4>
+                                        <p className="text-sm text-gray-600 whitespace-pre-wrap mb-2">{item.content}</p>
+                                        <div className="text-[10px] text-gray-400 flex items-center gap-1 border-t pt-2">
+                                            <UserCheck size={10}/> Đăng bởi 
+                                            <span 
+                                                className="font-bold text-gray-600 cursor-pointer hover:text-indigo-600 hover:underline"
+                                                onClick={() => setDetailedEmployeeId(item.authorId)}
+                                            >
+                                                {item.authorName} ({item.authorGroup})
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </Card>
+                </div>
+            </div>
+            </div>
+        )}
+
+        {/* --- BƯỚC 3: GIAO DIỆN TAB ĐIỂM DANH (LIVE ATTENDANCE) --- */}
+        {activeTab === 'attendance_live' && (
+            <div className="space-y-6 animate-fadeIn">
+                {/* PHẦN 1: THỐNG KÊ NHANH (CARDS) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="flex items-center justify-between p-6 bg-blue-50 border-blue-200">
+                        <div>
+                            <p className="text-sm font-bold text-blue-500 uppercase">Tổng nhân sự</p>
+                            <p className="text-3xl font-black text-blue-700">{employees.length}</p>
+                        </div>
+                        <Users size={32} className="text-blue-400"/>
+                    </Card>
+                    <Card className="flex items-center justify-between p-6 bg-green-50 border-green-200">
+                        <div>
+                            <p className="text-sm font-bold text-green-500 uppercase">Đã điểm danh (Hôm nay)</p>
+                            <p className="text-3xl font-black text-green-700">{todayCheckins.length}</p>
+                        </div>
+                        <CheckCircle2 size={32} className="text-green-400"/>
+                    </Card>
+                    <Card className="flex items-center justify-between p-6 bg-indigo-50 border-indigo-200">
+                        <div>
+                            <p className="text-sm font-bold text-indigo-500 uppercase">Đang hiển thị (Theo ca)</p>
+                            <p className="text-3xl font-black text-indigo-700">{filteredCheckins.length}</p>
+                        </div>
+                        <Filter size={32} className="text-indigo-400"/>
+                    </Card>
+                </div>
+
+                {/* PHẦN 2: BẢNG DỮ LIỆU CHI TIẾT */}
+                <Card>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                        <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                            <Clock className="text-indigo-600" /> Danh sách Check-in Hôm nay ({getCurrentDate()})
+                        </h3>
+                        <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                            {/* BỘ LỌC CA ĐIỂM DANH */}
+                            <select 
+                                className="p-2 border rounded-lg text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                                value={attendanceShiftFilter}
+                                onChange={(e) => setAttendanceShiftFilter(e.target.value)}
+                            >
+                                <option value="ALL">Tất cả các ca</option>
+                                <option value="D1">Chỉ hiện Ca D1</option>
+                                <option value="D2">Chỉ hiện Ca D2</option>
+                                <option value="X">Chỉ hiện Ca X (Đặc biệt)</option>
+                            </select>
+
+                            {/* NÚT XUẤT EXCEL THEO CA */}
+                            <button 
+                                onClick={handleAttendanceExport}
+                                disabled={isProcessing}
+                                className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+                            >
+                                {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <FileSpreadsheet size={16}/>} 
+                                Xuất Excel
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* THIẾT KẾ MỚI: DANH SÁCH ĐIỂM DANH DẠNG CARD */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filteredCheckins.map(log => {
+                            const emp = employees.find(e => e.id === log.employeeId);
+                            const empTheme = getThemeColors(emp?.group, emp?.code); // Tính theme của từng NV
+                            return (
+                                <div key={log.id} className={`bg-white p-4 rounded-xl border-y border-r border-l-4 ${empTheme.border} shadow-sm hover:shadow-md transition flex items-center justify-between group`}>
+                                    <div 
+                                        className="flex items-center gap-3 cursor-pointer"
+                                        onClick={() => setDetailedEmployeeId(emp?.id)}
+                                    >
+                                        <Avatar src={emp?.avatar} alt={log.name} size="md"/>
+                                        <div>
+                                            <div className={`font-bold text-sm transition group-hover:underline ${empTheme.text}`}>{log.name}</div>
+                                            <div className="text-xs text-gray-500 mb-1">{emp?.code} • <GroupBadge group={emp?.group} code={emp?.code} /></div>
+                                            <div className="text-[10px] text-gray-400 flex items-center gap-1">
+                                                <CalendarDays size={10}/> {log.date}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex flex-col items-end gap-1">
+                                        <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase border ${
+                                            log.shift === 'D1' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
+                                            log.shift === 'D2' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 
+                                            'bg-gray-50 text-gray-700 border-gray-200'
+                                        }`}>
+                                            CA {log.shift}
+                                        </span>
+                                        <span className="font-mono text-indigo-600 font-black text-lg tracking-tight">
+                                            {log.time}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {filteredCheckins.length === 0 && (
+                            <div className="col-span-full p-8 text-center text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                Chưa có nhân viên nào điểm danh cho bộ lọc này.
+                            </div>
+                        )}
+                    </div>
+                </Card>
+            </div>
+        )}
+
+        {/* --- NEW TAB: CHECKLIST MONITOR --- */}
+        {activeTab === 'checklist_monitor' && (
+            <div className="space-y-8 animate-fadeIn">
+                
+                {/* 0. QUICK QUESTIONS BAR (NEW FEATURE) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                    {/* KHỐI 1: NHIÊN LIỆU */}
+                    <div className="flex flex-col gap-2">
+                        <button 
+                            onClick={() => setMonitorFilter(monitorFilter === 'FUEL' ? null : 'FUEL')}
+                            className={`p-4 rounded-xl border-2 transition flex items-center justify-between group flex-grow ${monitorFilter === 'FUEL' ? 'bg-orange-100 border-orange-400 text-orange-800' : 'bg-white border-orange-100 text-gray-600 hover:border-orange-300'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`p-3 rounded-full ${monitorFilter === 'FUEL' ? 'bg-white text-orange-600' : 'bg-orange-100 text-orange-500'}`}>
+                                    <Fuel size={24}/>
+                                </div>
+                                <div className="text-left">
+                                    <span className="block font-bold text-base">Cần đổ dầu thiết bị nào?</span>
+                                    <span className="text-xs opacity-75">Tự động lọc mức dầu &lt; 55%</span>
+                                </div>
+                            </div>
+                            <ChevronDown className={`transition-transform duration-300 ${monitorFilter === 'FUEL' ? 'rotate-180' : ''}`}/>
+                        </button>
+                        
+                        <button 
+                            onClick={handleExportAllFuel}
+                            disabled={isProcessing}
+                            className="py-2.5 bg-orange-600 border border-orange-700 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition flex items-center justify-center gap-2 shadow-sm"
+                            title="Xuất file PDF báo cáo mức nhiên liệu toàn bộ thiết bị."
+                        >
+                            {isProcessing ? <Loader2 className="animate-spin" size={14}/> : <FileText size={14}/>} 
+                            Export PDF: Fuel Priority
+                        </button>
+                    </div>
+
+                    {/* KHỐI 2: SỰ CỐ / HƯ HỎNG */}
+                    <div className="flex flex-col gap-2">
+                        <button 
+                            onClick={() => setMonitorFilter(monitorFilter === 'ISSUES' ? null : 'ISSUES')}
+                            className={`p-4 rounded-xl border-2 transition flex items-center justify-between group flex-grow ${monitorFilter === 'ISSUES' ? 'bg-red-100 border-red-400 text-red-800' : 'bg-white border-red-100 text-gray-600 hover:border-red-300'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className={`p-3 rounded-full ${monitorFilter === 'ISSUES' ? 'bg-white text-red-600' : 'bg-red-100 text-red-500'}`}>
+                                    <AlertOctagon size={24}/>
+                                </div>
+                                <div className="text-left">
+                                    <span className="block font-bold text-base">Thiết bị nào đang gặp vấn đề?</span>
+                                    <span className="text-xs opacity-75">Sự cố hôm nay & Tồn đọng ca trước</span>
+                                </div>
+                            </div>
+                            <ChevronDown className={`transition-transform duration-300 ${monitorFilter === 'ISSUES' ? 'rotate-180' : ''}`}/>
+                        </button>
+                        
+                        {/* NÚT XUẤT PDF SỰ CỐ MỚI */}
+                        <button 
+                            onClick={handleExportAllIssues}
+                            disabled={isProcessing}
+                            className="py-2.5 bg-red-600 border border-red-700 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition flex items-center justify-center gap-2 shadow-sm"
+                            title="Xuất báo cáo PDF các thiết bị đang bị lỗi (Warning/Critical)"
+                        >
+                            {isProcessing ? <Loader2 className="animate-spin" size={14}/> : <FileText size={14}/>} 
+                            Export PDF: Issue Report
+                        </button>
+                    </div>
+                </div>
+
+                {/* FILTER RESULTS: FUEL */}
+                {monitorFilter === 'FUEL' && (
+                    <Card className="bg-orange-50 border-orange-200 animate-slideUp">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-bold text-orange-800 flex items-center gap-2">
+                                <Fuel size={20}/> Danh sách cần tiếp nhiên liệu ({lowFuelList.length})
+                            </h4>
+                            <button onClick={() => setMonitorFilter(null)} className="text-orange-400 hover:text-orange-700"><X size={20}/></button>
+                        </div>
+                        
+                        {lowFuelList.length === 0 ? (
+                            <div className="text-center py-6 text-orange-400 italic bg-white/50 rounded-xl">Không có thiết bị nào dưới 55% dầu.</div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {lowFuelList.map(log => {
+                                    const reporter = getReporterInfo(log.reporterId);
+                                    return (
+                                        <div key={log.id} className="bg-white p-3 rounded-lg border border-orange-200 shadow-sm flex flex-col gap-2">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <span 
+                                                        className="font-bold text-gray-800 block text-lg cursor-pointer hover:text-indigo-600 transition"
+                                                        onClick={() => setSelectedEquipmentId(log.equipmentId)} // LIÊN KẾT THIẾT BỊ
+                                                    >
+                                                        {log.equipmentId}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">{log.type} • {log.date}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-xl font-black text-red-500">{log.fuel}%</span>
+                                                    <div className="w-16 h-1.5 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                                                        <div className="h-full bg-red-500" style={{width: `${log.fuel}%`}}></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* CONTACT INFO */}
+                                            <div className="bg-orange-50 rounded p-2 text-xs border border-orange-100 mt-1">
+                                                <div 
+                                                    className="font-bold text-orange-800 flex items-center gap-1 cursor-pointer hover:underline w-fit"
+                                                    onClick={() => setDetailedEmployeeId(log.reporterId)} // LIÊN KẾT NHÂN VIÊN
+                                                >
+                                                    <UserCheck size={12}/> {log.reporterName} ({reporter.code})
+                                                </div>
+                                                {reporter.phone && (
+                                                    <div className="text-orange-600 flex items-center gap-1 mt-0.5 font-mono font-bold cursor-pointer hover:underline w-fit" title="Gọi điện">
+                                                        <Phone size={12}/> {reporter.phone}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </Card>
+                )}
+
+                {/* DANH SÁCH THIẾT BỊ ĐÃ ĐỔ DẦU */}
+                {monitorFilter === 'FUEL' && fuelUpdateList.length > 0 && (
+                    <Card className="bg-blue-50 border-blue-200 animate-slideUp mt-3">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-bold text-blue-800 flex items-center gap-2">
+                                <Fuel size={20}/> Lịch sử Cập nhật Đổ dầu ({fuelUpdateList.length} lần)
+                            </h4>
+                        </div>
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {fuelUpdateList.map((log, idx) => {
+                                const fuel = parseInt(log.fuel || 0);
+                                const fuelColor = fuel < 35 ? 'text-red-600 bg-red-50' : fuel < 60 ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50';
+                                return (
+                                    <div key={log.id || idx} className="bg-white rounded-xl border border-blue-100 p-3 flex items-center justify-between shadow-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${fuelColor}`}>
+                                                <Fuel size={18}/>
+                                            </div>
+                                            <div>
+                                                <span
+                                                    className="font-black text-gray-800 text-base cursor-pointer hover:text-indigo-600 transition"
+                                                    onClick={() => setSelectedEquipmentId(log.equipmentId)}
+                                                >
+                                                    {log.equipmentId}
+                                                </span>
+                                                <p className="text-[10px] text-gray-500">{log.date} • Ca {log.shift} • {log.reporterName}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`font-black text-xl px-3 py-1 rounded-xl ${fuelColor}`}>{fuel}%</span>
+                                            <div className="w-20 h-2 bg-gray-100 rounded-full mt-1.5 overflow-hidden">
+                                                <div className={`h-full rounded-full ${fuel < 35 ? 'bg-red-500' : fuel < 60 ? 'bg-orange-400' : 'bg-green-500'}`} style={{width: `${fuel}%`}}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Card>
+                )}
+
+                {/* FILTER RESULTS: ISSUES */}
+                {monitorFilter === 'ISSUES' && (
+                    <Card className="bg-red-50 border-red-200 animate-slideUp">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-bold text-red-800 flex items-center gap-2">
+                                <AlertTriangle size={20}/> Tổng hợp Thiết bị lỗi
+                            </h4>
+                            <button onClick={() => setMonitorFilter(null)} className="text-red-400 hover:text-red-700"><X size={20}/></button>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* COT 1: HOM NAY */}
+                            <div>
+                                <h5 className="font-bold text-red-700 text-sm uppercase mb-2 border-b border-red-200 pb-1 flex justify-between">
+                                    <span>🔥 Sự cố Hôm nay ({problematicList.today.length})</span>
+                                    <span className="text-[10px] bg-red-200 px-1.5 rounded text-red-800">{getCurrentDate()}</span>
+                                </h5>
+                                <div className="space-y-2">
+                                    {problematicList.today.length === 0 ? (
+                                        <p className="text-xs text-gray-500 italic p-2">Chưa có báo cáo lỗi trong ngày.</p>
+                                    ) : (
+                                        problematicList.today.map(log => {
+                                            const reporter = getReporterInfo(log.reporterId);
+                                            return (
+                                                <div key={log.id} className="bg-white p-3 rounded-lg border-l-4 border-l-red-500 shadow-sm">
+                                                    <div className="flex justify-between">
+                                                        <span 
+                                                            className="font-bold text-gray-800 cursor-pointer hover:text-indigo-600 transition"
+                                                            onClick={() => setSelectedEquipmentId(log.equipmentId)} // LIÊN KẾT THIẾT BỊ
+                                                        >
+                                                            {log.equipmentId}
+                                                        </span>
+                                                        <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded text-gray-600">Ca {log.shift}</span>
+                                                    </div>
+                                                    <div className="mt-2 space-y-2">
+                                                        {log.data && Object.values(log.data).filter(i => i.status !== 'OK').map((item, idx) => (
+                                                            <div key={idx} className="text-xs text-red-700 flex flex-col gap-1.5 bg-red-50/50 p-2 rounded border border-red-100">
+                                                                <div className="flex items-start gap-1 font-medium">
+                                                                    <XCircle size={12} className="mt-0.5 shrink-0"/> <span>{item.note || 'Lỗi kỹ thuật'}</span>
+                                                                </div>
+                                                                {/* CẬP NHẬT: THÊM HÌNH ẢNH VÀO CỘT SỰ CỐ HÔM NAY */}
+                                                                {item.image && (
+                                                                    <ImagePreview src={item.image} alt="Lỗi" className="h-16 w-auto object-cover rounded border border-red-200 shadow-sm ml-4" />
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {/* REPORTER CONTACT */}
+                                                    <div className="mt-3 pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
+                                                        <div 
+                                                            className="font-medium text-gray-700 cursor-pointer hover:text-indigo-600 hover:underline"
+                                                            onClick={() => setDetailedEmployeeId(log.reporterId)} // LIÊN KẾT NHÂN VIÊN
+                                                        >
+                                                            {log.reporterName} <span className="text-gray-400">({reporter.code})</span>
+                                                        </div>
+                                                        {reporter.phone && <a href={`tel:${reporter.phone}`} className="flex items-center gap-1 text-indigo-600 font-bold hover:underline"><Phone size={12}/> {reporter.phone}</a>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* COT 2: TON DONG */}
+                            <div>
+                                <h5 className="font-bold text-gray-600 text-sm uppercase mb-2 border-b border-gray-300 pb-1 flex justify-between">
+                                    <span>⏳ Sự cố Tồn đọng (Chưa xử lý) ({problematicList.pending.length})</span>
+                                </h5>
+                                <div className="space-y-2">
+                                    {problematicList.pending.length === 0 ? (
+                                        <p className="text-xs text-gray-500 italic p-2">Không có sự cố tồn đọng.</p>
+                                    ) : (
+                                        problematicList.pending.map(log => {
+                                            const reporter = getReporterInfo(log.reporterId);
+                                            return (
+                                                <div key={log.id} className="bg-white/80 p-3 rounded-lg border-l-4 border-l-gray-400 shadow-sm opacity-90">
+                                                    <div className="flex justify-between">
+                                                        <span 
+                                                            className="font-bold text-gray-700 cursor-pointer hover:text-indigo-600 transition"
+                                                            onClick={() => setSelectedEquipmentId(log.equipmentId)} // LIÊN KẾT THIẾT BỊ
+                                                        >
+                                                            {log.equipmentId}
+                                                        </span>
+                                                        <span className="text-xs text-red-500 font-medium">{log.date}</span>
+                                                    </div>
+                                                    <div className="mt-2 space-y-2">
+                                                        {log.data && Object.values(log.data).filter(i => i.status !== 'OK').map((item, idx) => (
+                                                            <div key={idx} className="text-xs text-gray-600 flex flex-col gap-1.5 bg-gray-50 p-2 rounded border border-gray-200">
+                                                                <div className="flex items-start gap-1 font-medium">
+                                                                    <AlertTriangle size={12} className="mt-0.5 shrink-0 text-yellow-600"/> <span>{item.note || 'Lỗi chưa khắc phục'}</span>
+                                                                </div>
+                                                                {/* CẬP NHẬT: THÊM HÌNH ẢNH VÀO CỘT TỒN ĐỌNG */}
+                                                                {item.image && (
+                                                                    <ImagePreview src={item.image} alt="Lỗi" className="h-16 w-auto object-cover rounded border border-gray-300 shadow-sm ml-4" />
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    {/* REPORTER CONTACT SIMPLE */}
+                                                    <div className="mt-2 text-[10px] text-gray-400 flex items-center gap-2">
+                                                        <span 
+                                                            className="cursor-pointer hover:text-indigo-600 hover:underline"
+                                                            onClick={() => setDetailedEmployeeId(log.reporterId)} // LIÊN KẾT NHÂN VIÊN
+                                                        >
+                                                            Bởi: {log.reporterName}
+                                                        </span>
+                                                        {reporter.phone && <span>• <Phone size={8} className="inline"/> {reporter.phone}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                )}
+
+                {/* PHẦN A: CẢNH BÁO KỸ THUẬT */}
+                <div>
+                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2 mb-4">
+                        <AlertOctagon className="text-red-600" /> Cảnh báo Kỹ thuật (24h qua)
+                    </h3>
+                    
+                    {criticalIssues.length === 0 ? (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center text-green-700">
+                            <CheckCircle2 size={48} className="mx-auto mb-2 opacity-50"/>
+                            <p className="font-bold">Hệ thống ổn định</p>
+                            <p className="text-sm">Không phát hiện lỗi nghiêm trọng nào trong 24h qua.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {criticalIssues.map(log => {
+                                const reporter = getReporterInfo(log.reporterId);
+                                return (
+                                    <div key={log.id} className="bg-white rounded-xl p-4 shadow-sm border border-red-100 hover:shadow-md transition relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition">
+                                            <AlertTriangle size={80} className="text-red-500"/>
+                                        </div>
+                                        <div className="flex justify-between items-start mb-2 relative z-10">
+                                            <div 
+                                                className="font-black text-xl text-gray-800 cursor-pointer hover:text-indigo-600 transition"
+                                                onClick={() => setSelectedEquipmentId(log.equipmentId)} // LIÊN KẾT THIẾT BỊ
+                                            >
+                                                {log.equipmentId}
+                                            </div>
+                                            {renderIssueSeverity(log)}
+                                        </div>
+                                        
+                                        <div className="space-y-2 mb-3 relative z-10">
+                                            {/* Liệt kê các lỗi - ĐÃ SỬA LẠI ĐỂ HIỂN THỊ RÕ TÊN VẤN ĐỀ */}
+                                            {log.data && Object.entries(log.data).map(([key, item]) => {
+                                                if (item.status === 'OK') return null;
+                                                
+                                                // Logic màu sắc chi tiết từng item
+                                                const isCritical = item.status === 'CRITICAL';
+                                                const itemClass = isCritical 
+                                                    ? 'bg-red-50 border-red-100 text-red-800' 
+                                                    : 'bg-yellow-50 border-yellow-100 text-yellow-800';
+                                                const ItemIcon = isCritical ? XCircle : AlertTriangle;
+
+                                                return (
+                                                    <div key={key} className={`text-sm p-3 rounded-lg border flex flex-col gap-1.5 shadow-sm ${itemClass}`}>
+                                                        <div className="font-bold flex items-start gap-1 text-[10px] uppercase opacity-80 border-b border-current/20 pb-1">
+                                                            <ItemIcon size={14} className="shrink-0"/> {getChecklistItemLabel(log.type, key)}
+                                                        </div>
+                                                        <div className="font-medium text-sm flex flex-col gap-2 mt-1">
+                                                            <span className="italic">"{item.note ? item.note : 'Lỗi không xác định'}"</span>
+                                                            {/* CẬP NHẬT: THÊM HÌNH ẢNH VÀO CARD CẢNH BÁO KỸ THUẬT (24H QUA) */}
+                                                            {item.image && (
+                                                                <ImagePreview src={item.image} alt="Bằng chứng lỗi" className="h-24 w-auto object-cover rounded-lg border border-current/20 shadow" />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* EXPANDED CONTACT INFO */}
+                                        <div className="bg-gray-50 rounded-lg p-2 border border-gray-100 relative z-10 text-xs">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span 
+                                                    className="font-bold text-gray-700 flex items-center gap-1 cursor-pointer hover:text-indigo-600 hover:underline"
+                                                    onClick={() => setDetailedEmployeeId(log.reporterId)} // LIÊN KẾT NHÂN VIÊN
+                                                >
+                                                    <UserCheck size={12}/> {log.reporterName}
+                                                </span>
+                                                <span className="text-gray-500 font-mono">{reporter.code}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-400">{log.shift} • {log.date}</span>
+                                                {reporter.phone && (
+                                                    <a href={`tel:${reporter.phone}`} className="flex items-center gap-1 text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 hover:bg-indigo-100 transition">
+                                                        <Phone size={10}/> {reporter.phone}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* PHẦN B: FUEL & METER DASHBOARD */}
+                <Card>
+                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2 mb-4">
+                        <Fuel className="text-indigo-600" /> Theo dõi Nhiên liệu (Mới nhất)
+                    </h3>
+                    
+                    {/* THIẾT KẾ MỚI: GRID CARD TRỰC QUAN CHO NHIÊN LIỆU */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {latestLogs.map(log => {
+                            const fuel = parseInt(log.fuel || 0);
+                            const reporter = getReporterInfo(log.reporterId);
+                            
+                            // LOGIC MÀU SẮC NHIÊN LIỆU
+                            let fuelColor = 'bg-green-500';
+                            let fuelText = 'text-green-700';
+                            let fuelBg = 'bg-green-50';
+                            
+                            if (fuel < 35) {
+                                fuelColor = 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]';
+                                fuelText = 'text-red-700';
+                                fuelBg = 'bg-red-50';
+                            } else if (fuel < 50) {
+                                fuelColor = 'bg-orange-500';
+                                fuelText = 'text-orange-700';
+                                fuelBg = 'bg-orange-50';
+                            }
+
+                            return (
+                                <div key={log.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition relative overflow-hidden">
+                                    {/* Nền cảnh báo nhẹ nếu dưới 35% */}
+                                    {fuel < 35 && <div className="absolute inset-0 bg-red-50/50 pointer-events-none"></div>}
+                                    
+                                    <div className="relative z-10">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 ${fuelBg} ${fuelText}`}>
+                                                    {log.shift}
+                                                </div>
+                                                <div>
+                                                    <h4 
+                                                        className="font-black text-gray-800 text-lg leading-tight cursor-pointer hover:text-indigo-600 transition"
+                                                        onClick={() => setSelectedEquipmentId(log.equipmentId)} // LIÊN KẾT THIẾT BỊ
+                                                    >
+                                                        {log.equipmentId}
+                                                    </h4>
+                                                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{log.type}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-[10px] text-gray-400 font-bold uppercase">{log.shift}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Thanh Nhiên Liệu Lớn */}
+                                        <div className="mb-4">
+                                            <div className="flex justify-between items-end mb-1.5">
+                                                <span className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
+                                                    <Fuel size={14} className={fuelText}/> Nhiên liệu
+                                                </span>
+                                                <span className={`font-black text-2xl leading-none ${fuelText}`}>{fuel}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 rounded-full h-3.5 overflow-hidden border border-gray-200/50 inset-shadow-sm">
+                                                <div className={`h-full rounded-full transition-all duration-700 ease-out ${fuelColor}`} style={{ width: `${fuel}%` }}></div>
+                                            </div>
+                                        </div>
+
+                                        {/* Footer Card */}
+                                        <div className="flex justify-between items-center text-[10px] text-gray-500 border-t border-gray-100 pt-3">
+                                            <div 
+                                                className="flex items-center gap-1.5 cursor-pointer hover:text-indigo-600 hover:underline w-fit"
+                                                onClick={() => setDetailedEmployeeId(log.reporterId)} // LIÊN KẾT NHÂN VIÊN
+                                            >
+                                                <UserCheck size={12} className="text-indigo-400"/>
+                                                <span className="font-bold text-gray-700">{log.reporterName}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span>{log.date}</span>
+                                                {reporter.phone && (
+                                                    <a href={`tel:${reporter.phone}`} className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition">
+                                                        <Phone size={10}/>
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {latestLogs.length === 0 && (
+                            <div className="col-span-full p-8 text-center text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                Chưa có dữ liệu thiết bị nào
+                            </div>
+                        )}
+                    </div>
+                </Card>
+
+                {/* PHẦN C: BẢNG TỔNG HỢP LỊCH SỬ THIẾT BỊ (CLICKABLE - GROUPED) */}
+                <Card className="border-t-4 border-t-indigo-500 bg-gray-50/30">
+                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2 mb-4">
+                        <History className="text-indigo-600" /> Bảng Tổng hợp Thiết bị
+                    </h3>
+
+                    {equipmentSummaryList.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-200">
+                            Chưa có dữ liệu kiểm tra
+                        </div>
+                    ) : (() => {
+                        // Thứ tự nhóm: QC > RTG > RS/LRS/EH/UN > FL > TT > Pickup > Khác
+                        const GROUP_ORDER_EQUIP = [
+                            { key: 'QC', label: '🚢 Cẩu QC', color: 'border-blue-400', bg: 'bg-blue-50', text: 'text-blue-700', match: id => /^QC/i.test(id) },
+                            { key: 'RTG', label: '🏗️ Cẩu RTG', color: 'border-indigo-400', bg: 'bg-indigo-50', text: 'text-indigo-700', match: id => /^RTG/i.test(id) },
+                            { key: 'RS', label: '🚜 Xe nâng (RS/LRS/EH/UN)', color: 'border-green-400', bg: 'bg-green-50', text: 'text-green-700', match: id => /^(RS|LRS|EH|UN)/i.test(id) },
+                            { key: 'FL', label: '🚜 Xe nâng (FL)', color: 'border-teal-400', bg: 'bg-teal-50', text: 'text-teal-700', match: id => /^FL/i.test(id) },
+                            { key: 'TT', label: '🚛 Xe đầu kéo (TT)', color: 'border-orange-400', bg: 'bg-orange-50', text: 'text-orange-700', match: id => /^TT/i.test(id) },
+                            { key: 'Pickup', label: '🚐 Pickup / BUS16', color: 'border-yellow-400', bg: 'bg-yellow-50', text: 'text-yellow-700', match: id => /^(PU|BUS)/i.test(id) },
+                            { key: 'DWC', label: '🎧 DWC / WCO', color: 'border-purple-400', bg: 'bg-purple-50', text: 'text-purple-700', match: id => /^(WCO|DWC)/i.test(id) },
+                            { key: 'Other', label: '🔧 Khác', color: 'border-gray-400', bg: 'bg-gray-50', text: 'text-gray-700', match: () => true },
+                        ];
+
+                        const grouped = {};
+                        GROUP_ORDER_EQUIP.forEach(g => { grouped[g.key] = []; });
+
+                        equipmentSummaryList.forEach(item => {
+                            const grp = GROUP_ORDER_EQUIP.find(g => g.match(item.id));
+                            if (grp) grouped[grp.key].push(item);
+                        });
+
+                        return GROUP_ORDER_EQUIP.filter(g => grouped[g.key].length > 0).map(grp => (
+                            <div key={grp.key} className="mb-6">
+                                <div className={`flex items-center gap-2 mb-3 px-2 py-1.5 rounded-lg border-l-4 ${grp.color} ${grp.bg}`}>
+                                    <span className={`font-black text-sm uppercase tracking-wide ${grp.text}`}>{grp.label}</span>
+                                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-white/70 ${grp.text}`}>{grouped[grp.key].length} thiết bị</span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                    {grouped[grp.key].map(item => {
+                                        const isCritical = item.lastStatus === 'CRITICAL';
+                                        const latestFuel = item.logs?.[0]?.fuel;
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => setSelectedEquipmentId(item.id)}
+                                                className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition group"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-inner ${
+                                                        isCritical ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-green-50 text-green-500 border border-green-100'
+                                                    }`}>
+                                                        {isCritical ? <AlertOctagon size={20}/> : <CheckCircle2 size={20}/>}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-black text-gray-800 text-base flex items-center gap-1.5 leading-none mb-1">
+                                                            {item.id}
+                                                            {isCritical && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>}
+                                                        </h4>
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded w-fit">
+                                                                Tổng: <b>{item.totalCount}</b> lượt
+                                                            </span>
+                                                            {latestFuel && (
+                                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded w-fit ${parseInt(latestFuel) < 35 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                                                    ⛽ {latestFuel}%
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right flex flex-col items-end gap-2">
+                                                    <span className="text-[10px] text-gray-400 font-medium">{item.lastDate}</span>
+                                                    <div className="w-6 h-6 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition">
+                                                        <ChevronRight size={14}/>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ));
+                    })()}
+                </Card>
+            </div>
+        )}
+        
+        {/* EQUIPMENT HISTORY MODAL */}
+        <Modal 
+            isOpen={!!selectedEquipmentId} 
+            onClose={() => setSelectedEquipmentId(null)} 
+            title={`Lịch sử: ${selectedEquipmentId}`}
+        >
+             <div className="space-y-4">
+                 {selectedEquipmentId && equipmentSummaryList.find(e => e.id === selectedEquipmentId) && (
+                     <div className="space-y-4">
+                         {equipmentSummaryList.find(e => e.id === selectedEquipmentId).logs.map((log, index) => (
+                             <div key={log.id || index} className="border rounded-xl p-4 hover:shadow-md transition bg-white relative overflow-hidden">
+                                 {/* Log Header */}
+                                 <div className="flex justify-between items-start mb-2 border-b pb-2 border-gray-100">
+                                     <div className="flex items-center gap-2">
+                                         <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                                             <CalendarDays size={14}/> {log.date}
+                                         </div>
+                                         <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                                             <Clock size={14}/> {log.shift}
+                                         </div>
+                                     </div>
+                                     <div className={`text-xs font-bold px-2 py-1 rounded uppercase ${log.status === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                         {log.status === 'CRITICAL' ? 'Có lỗi' : 'Tốt'}
+                                     </div>
+                                 </div>
+
+                                 {/* Technical Stats */}
+                                 <div className="mb-3 text-xs">
+                                     <div>
+                                         <span className="text-gray-400 block uppercase font-bold text-[10px]">Nhiên liệu</span>
+                                         <div className="flex items-center gap-2">
+                                            <span className="font-mono text-gray-800 font-bold text-sm">{log.fuel || '--'}%</span>
+                                            {log.fuel && (
+                                                <div className={`h-1.5 w-12 rounded-full ${parseInt(log.fuel) < 35 ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                                            )}
+                                         </div>
+                                     </div>
+                                 </div>
+
+                                 {/* Defect Details */}
+                                 <div className="bg-gray-50 p-2 rounded-lg text-sm mb-2 border border-gray-100">
+                                     <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Chi tiết kiểm tra:</span>
+                                     <ChecklistLogDetails log={log} />
+                                 </div>
+
+                                 {/* Reporter Info */}
+                                 <div className="text-[10px] text-gray-400 flex justify-end items-center gap-1">
+                                     <UserCheck size={12}/> Người kiểm tra: <b>{log.reporterName}</b>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                 )}
+             </div>
+        </Modal>
+
+        {activeTab === 'approval' && (
+            <div className="animate-fadeIn">
+                {renderApprovalList()}
+            </div>
+        )}
+
+        {/* --- NEW TAB: KIỂM DUYỆT (MODERATION) --- */}
+        {activeTab === 'guests' && (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="bg-gradient-to-r from-teal-600 to-cyan-700 rounded-2xl p-4 text-white">
+              <h2 className="font-black text-lg flex items-center gap-2 mb-1"><HardHat size={20}/>Quản lý Khách & Nhà thầu</h2>
+              <p className="text-teal-200 text-sm">Phê duyệt đăng ký ra vào cổng, ghi nhận sự cố</p>
+            </div>
+            <GuestManagementPanel currentUser={currentUser} showToast={showToast} initialGuestViewId={initialGuestViewId} />
+          </div>
+        )}
+
+        {activeTab === 'moderation' && (
+            <div className="space-y-4 animate-fadeIn">
+                <Card className="border-t-4 border-red-500">
+                    <h3 className="font-bold text-red-700 text-lg flex items-center gap-2 mb-2">
+                        <ShieldAlert size={20} /> Trung tâm Kiểm duyệt Dữ liệu
+                    </h3>
+                    <p className="text-sm text-gray-500 mb-6 bg-red-50 p-3 rounded-lg border border-red-100">
+                        Nơi giám sát <b>TOÀN BỘ</b> luồng dữ liệu thô (Báo cáo, Checklist, Điểm danh) được đẩy lên hệ thống bởi Nhân viên. Mọi thao tác can thiệp tại đây đều yêu cầu xác thực bảo mật cấp Quản lý.
+                    </p>
+                    <div className="space-y-4">
+                        {moderationFeed.length === 0 ? (
+                            <div className="text-center py-10 text-gray-400 italic">Không có nội dung nào trong hệ thống.</div>
+                        ) : (
+                            moderationFeed.map(item => {
+                                // Xác định Giao diện theo Type
+                                let TypeIcon = Activity;
+                                let typeColor = "text-gray-500";
+                                let typeBg = "bg-gray-100";
+                                let typeLabel = "Khác";
+
+                                if (item.feedType === 'SAFETY') { TypeIcon = ShieldAlert; typeColor = "text-red-700"; typeBg = "bg-red-100"; typeLabel = "Báo cáo An toàn"; }
+                                else if (item.feedType === 'IDEA') { TypeIcon = Lightbulb; typeColor = "text-purple-700"; typeBg = "bg-purple-100"; typeLabel = "Sáng kiến"; }
+                                else if (item.feedType === 'CHECKLIST') { TypeIcon = ClipboardCheck; typeColor = "text-indigo-700"; typeBg = "bg-indigo-100"; typeLabel = "Checklist TB"; }
+                                else if (item.feedType === 'ATTENDANCE') { TypeIcon = Clock; typeColor = "text-green-700"; typeBg = "bg-green-100"; typeLabel = "Điểm danh"; }
+
+                                const author = employees.find(e => e.id === item.unifiedEmpId);
+
+                                return (
+                                <div key={item.id + item.feedType} className={`p-4 rounded-xl border transition-all ${item.isHidden ? 'bg-gray-50 border-gray-300 opacity-75' : 'bg-white border-gray-200 shadow-sm'} flex flex-col gap-3 relative`}>
+                                    {item.isHidden && <div className="absolute top-2 right-2 px-2 py-1 bg-gray-600 text-white text-[10px] font-bold rounded shadow-inner uppercase tracking-wider">Đã ẩn khỏi Bảng tin</div>}
+                                    
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-3">
+                                            <Avatar src={author?.avatar} size="md" />
+                                            <div>
+                                                <p className="font-bold text-gray-800 text-base">{author?.name || 'Nhân viên ẩn danh'}</p>
+                                                <p className="text-xs text-gray-500 flex items-center gap-1">
+                                                    {item.date} <span className="mx-1">•</span>
+                                                    <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] uppercase flex items-center gap-1 ${typeBg} ${typeColor}`}>
+                                                        <TypeIcon size={10}/> {typeLabel}
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Status logic (nếu có) */}
+                                        {(item.status === 'Approved' || item.status === 'Rejected' || item.status === 'Pending') && (
+                                            <div className="flex flex-col items-end gap-1 mt-1 pr-16 sm:pr-0">
+                                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${item.status === 'Approved' ? 'bg-green-100 text-green-700 border border-green-200' : item.status === 'Rejected' ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-yellow-100 text-yellow-700 border border-yellow-200'}`}>
+                                                    {item.status === 'Approved' ? 'Đã duyệt' : item.status === 'Rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-800 font-medium border border-gray-100 shadow-inner">
+                                        {item.title && <h5 className="font-black text-gray-900 mb-1">{item.title}</h5>}
+                                        <p className="whitespace-pre-wrap">{item.content}</p>
+                                        {item.image && <ImagePreview src={item.image} className="h-32 w-auto mt-3 rounded-lg border shadow-sm object-cover" />}
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3 mt-1">
+                                        {/* Nút Ẩn/Hiện chỉ áp dụng cho Idea và Safety (Vì Checklist/Attendance không hiện trên News Feed) */}
+                                        {(item.feedType === 'SAFETY' || item.feedType === 'IDEA') && (
+                                            <button 
+                                                onClick={() => triggerModAction('TOGGLE_HIDE', item)}
+                                                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 border ${item.isHidden ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`}
+                                            >
+                                                {item.isHidden ? <><Activity size={14}/> Khôi phục Hiện</> : <><Archive size={14}/> Ẩn khỏi Bảng tin</>}
+                                            </button>
+                                        )}
+                                        
+                                        <button 
+                                            onClick={() => openPromoteModal(item)}
+                                            className="flex-[1.5] py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 transition flex items-center justify-center gap-1.5"
+                                        >
+                                            <Megaphone size={14}/> Truyền thông (Tuyên dương)
+                                        </button>
+
+                                        <button 
+                                            onClick={() => triggerModAction('DELETE', item)}
+                                            className="flex-1 py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition flex items-center justify-center gap-1.5"
+                                        >
+                                            <Trash2 size={14}/> Xóa vĩnh viễn
+                                        </button>
+                                    </div>
+                                </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </Card>
+            </div>
+        )}
+
+        {/* --- NEW TAB: SYSTEM AUDIT LOGS (SUPER ADMIN) --- */}
+        {activeTab === 'audit_logs' && currentUser.id === 'SUPER_ADMIN' && (
+            <div className="space-y-4 animate-fadeIn">
+                <Card className="flex flex-col h-full">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                <ShieldAlert className="text-red-600" /> Nhật ký Hệ thống (Audit Trail)
+                            </h3>
+                            <p className="text-xs text-gray-500">Theo dõi các hành động quan trọng và thay đổi dữ liệu.</p>
+                        </div>
+                        <div className="relative w-full md:w-auto">
+                            <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
+                            <input 
+                                type="text" 
+                                placeholder="Tìm kiếm bất kỳ (Nội dung, người, mã...)" 
+                                className="pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-full md:w-80 bg-gray-50 focus:bg-white transition"
+                                value={auditSearchTerm}
+                                onChange={(e) => setAuditSearchTerm(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-lg border border-gray-100">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
+                                <tr>
+                                    <th className="p-4 whitespace-nowrap">Thời gian</th>
+                                    <th className="p-4 whitespace-nowrap">Hành động</th>
+                                    <th className="p-4 whitespace-nowrap">Người thực hiện</th>
+                                    {/* FIX: Đã ẩn cột Đối tượng theo yêu cầu */}
+                                    <th className="p-4 min-w-[300px]">Chi tiết thay đổi</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {auditLogs.length === 0 ? (
+                                    <tr>
+                                        {/* FIX: Giảm colSpan từ 5 xuống 4 do đã ẩn 1 cột */}
+                                        <td colSpan="4" className="p-8 text-center text-gray-400 italic">
+                                            Chưa có dữ liệu nhật ký.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    auditLogs.filter(log => {
+                                        const term = auditSearchTerm.toLowerCase();
+                                        // FIX: Tìm kiếm trên TOÀN BỘ dữ liệu của log (gồm cả JSON details)
+                                        const searchContent = [
+                                            log.action,
+                                            log.actorName,
+                                            log.actorGroup,
+                                            log.target, // Vẫn cho phép tìm theo ID ẩn nếu người dùng gõ đúng ID
+                                            log.date,
+                                            JSON.stringify(log.details || {}) // Cho phép tìm nội dung chi tiết
+                                        ].join(' ').toLowerCase();
+                                        
+                                        return searchContent.includes(term);
+                                    }).map(log => (
+                                        <tr key={log.id} className="hover:bg-gray-50 transition">
+                                            <td className="p-4 whitespace-nowrap align-top">
+                                                <div className="font-bold text-gray-800">{log.date}</div>
+                                                <div className="text-xs text-gray-400 font-mono">
+                                                    {new Date(log.timestamp).toLocaleTimeString('vi-VN')}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 align-top">
+                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border inline-block ${
+                                                    log.action === 'RECALL' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                    log.action === 'LOGIN' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                    log.action === 'UPDATE' || log.action === 'MANAGER_EDIT' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                                    log.action === 'EMPLOYEE_TRANSITION' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                                    log.action === 'RESET_PASSWORD' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                                    'bg-gray-100 text-gray-700 border-gray-200'
+                                                }`}>
+                                                    {log.action}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 align-top">
+                                                <div className="font-bold text-gray-800 text-sm flex items-center gap-1">
+                                                    <UserCheck size={12} className="text-indigo-400"/> {log.actorName}
+                                                </div>
+                                                <div className="text-xs text-gray-500 ml-4">{log.actorGroup}</div>
+                                            </td>
+                                            {/* FIX: Đã ẩn cell hiển thị ID Đối tượng */}
+                                            <td className="p-4 text-xs text-gray-600 font-medium leading-relaxed align-top">
+                                                {/* FIX: GIAO DIỆN CHI TIẾT GỌN GÀNG HƠN & VIỆT HÓA KEY */}
+                                                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                                    {typeof log.details === 'string' ? (
+                                                        <div className="p-2 italic">{log.details}</div>
+                                                    ) : (
+                                                        <div className="divide-y divide-gray-100">
+                                                            {Object.entries(log.details || {}).map(([key, val]) => {
+                                                                // MAP KEY SANG TIẾNG VIỆT
+                                                                const KEY_MAP = {
+                                                                    oldStatus: "Trạng thái cũ",
+                                                                    newStatus: "Trạng thái mới",
+                                                                    oldFeedback: "Phản hồi cũ",
+                                                                    newFeedback: "Phản hồi mới",
+                                                                    reason: "Lý do",
+                                                                    type: "Phân loại",
+                                                                    content: "Nội dung báo cáo",
+                                                                    originalContent: "Dữ liệu gốc (Backup)",
+                                                                    status: "Trạng thái",
+                                                                    severity: "Mức độ",
+                                                                    impact: "Tác động",
+                                                                    oldCode: "Mã cũ",
+                                                                    newCode: "Mã mới",
+                                                                    oldGroup: "Bộ phận cũ",
+                                                                    newGroup: "Bộ phận mới",
+                                                                    targetName: "Tên nhân viên",
+                                                                    targetCode: "Mã nhân viên"
+                                                                };
+                                                                const label = KEY_MAP[key] || key.replace(/([A-Z])/g, ' $1').trim(); // Fallback to Title Case
+
+                                                                return (
+                                                                    <div key={key} className="flex flex-col sm:flex-row p-2 hover:bg-white transition group/row">
+                                                                        <div className="sm:w-32 shrink-0 font-bold text-[10px] text-gray-500 uppercase tracking-wide mb-1 sm:mb-0 pt-0.5">
+                                                                            {label}
+                                                                        </div>
+                                                                        <div className="flex-grow text-gray-800 break-words font-mono text-[11px]">
+                                                                            {typeof val === 'object' && val !== null ? (
+                                                                                <details className="group">
+                                                                                    <summary className="cursor-pointer text-indigo-600 font-bold select-none list-none flex items-center gap-1 hover:underline">
+                                                                                        <span className="group-open:rotate-90 transition-transform">▸</span> Xem dữ liệu chi tiết
+                                                                                    </summary>
+                                                                                    <pre className="mt-2 bg-white border border-gray-200 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap text-gray-600 shadow-inner">
+                                                                                        {JSON.stringify(val, null, 2)}
+                                                                                    </pre>
+                                                                                </details>
+                                                                            ) : (
+                                                                                <span className={key.toLowerCase().includes('status') ? 'font-bold text-indigo-700' : ''}>
+                                                                                    {String(val)}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            </div>
+        )}
+
+        {/* --- RECORD FEATURE (FULLY RESTORED) --- */}
+        {activeTab === 'record' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+                {/* LEFT COLUMN: INPUT FORM */}
+                <div className="lg:col-span-1 space-y-6">
+                    {/* 1. SELECT EMPLOYEE */}
+                    <Card className={`${selectedEmployee ? 'border-indigo-200 bg-indigo-50' : ''} transition-all`}>
+                        <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                            <UserCheck size={20}/> Chọn Nhân viên
+                        </h3>
+                        <div className="relative mb-3">
+                            <Search className="absolute left-3 top-3 text-gray-400" size={16}/>
+                            <input 
+                                type="text" 
+                                placeholder="Tìm cấp dưới..." 
+                                className="w-full pl-9 p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                value={recordSearch}
+                                onChange={(e) => setRecordSearch(e.target.value)}
+                            />
+                        </div>
+                        <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                            {filteredSubordinates.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-2">Không tìm thấy nhân viên phù hợp</p>
+                            ) : (
+                                filteredSubordinates.map(emp => (
+                                    <div 
+                                        key={emp.id}
+                                        onClick={() => setSelectedEmployee(emp)}
+                                        className={`p-2 rounded-lg flex items-center gap-3 cursor-pointer transition border ${selectedEmployee?.id === emp.id ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-200' : 'hover:bg-gray-50 border-transparent'}`}
+                                    >
+                                        <Avatar src={emp.avatar} alt={emp.name} size="sm"/>
+                                        <div className="overflow-hidden">
+                                            <p className="font-bold text-gray-800 text-sm truncate">{emp.name}</p>
+                                            <p className="text-xs text-gray-500">{emp.code} • {emp.group}</p>
+                                        </div>
+                                        {selectedEmployee?.id === emp.id && <CheckCircle2 className="ml-auto text-indigo-600" size={16}/>}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* 2. INPUT FORM (Visible when Employee Selected) */}
+                    {selectedEmployee && (
+                        <Card className="border-2 border-indigo-100 relative overflow-hidden shadow-lg animate-slideUp">
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className="font-bold text-gray-800">Ghi nhận cho:</h3>
+                                    <p className="text-indigo-600 font-bold text-lg">{selectedEmployee.name}</p>
+                                </div>
+                                <button onClick={() => setSelectedEmployee(null)} className="text-gray-400 hover:text-red-500"><X size={20}/></button>
+                            </div>
+
+                            {/* Rating Stars */}
+                            <div className="mb-4 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Mức độ đánh giá</label>
+                                <div className="flex flex-col items-center gap-2">
+                                    <RatingStars rating={rating} setRating={setRating} size={28} />
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full border ${ratingLabel.color}`}>
+                                        {ratingLabel.text}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Category Selection */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Tiêu chí (KPI)</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'SAFETY', label: 'An toàn', icon: ShieldAlert, color: 'text-red-600 bg-red-50 border-red-200' },
+                                        { id: 'QUALITY', label: 'Chất lượng', icon: CheckCircle2, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+                                        { id: 'ATTITUDE', label: 'Thái độ', icon: ThumbsUp, color: 'text-purple-600 bg-purple-50 border-purple-200' },
+                                        { id: 'ATTENDANCE', label: 'Chuyên cần', icon: Clock, color: 'text-green-600 bg-green-50 border-green-200' }
+                                    ].map(cat => (
+                                        <button 
+                                            key={cat.id}
+                                            onClick={() => setCategory(cat.id)}
+                                            className={`flex items-center gap-2 p-2 rounded-lg border text-xs font-bold transition ${category === cat.id ? `${cat.color} ring-1 ring-offset-1` : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                                        >
+                                            <cat.icon size={14}/> {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* GỢI Ý 5W1H CHO GHI NHẬN */}
+                            <div className="mb-3 bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                                    <span className="text-xs font-bold text-indigo-700 flex items-center gap-1"><ClipboardCheck size={12}/> Ghi nhận chuẩn 5W1H — Đầy đủ, minh bạch:</span>
+                                    <button 
+                                        onClick={openWizard}
+                                        className="text-[10px] font-bold bg-white text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-200 shadow-sm hover:bg-indigo-100 transition whitespace-nowrap flex items-center gap-1 active:scale-95"
+                                    >
+                                        <Bot size={14}/> Bật Trợ lý 5W1H
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">WHAT</span><span className="text-gray-500">Hành vi / sự việc gì?</span></div>
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">WHERE</span><span className="text-gray-500">Tại vị trí / thiết bị nào?</span></div>
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">WHEN</span><span className="text-gray-500">Thời điểm / ca làm việc?</span></div>
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">WHO</span><span className="text-gray-500">Nhân viên / nhóm liên quan?</span></div>
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">WHY</span><span className="text-gray-500">Tại sao đáng ghi nhận?</span></div>
+                                    <div className="bg-white rounded-lg px-2 py-1.5 border border-indigo-100 shadow-sm"><span className="font-black text-indigo-600 block">HOW</span><span className="text-gray-500">Mức độ / cách xử lý?</span></div>
+                                </div>
+                            </div>
+
+                            {/* Content Input */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Nội dung ghi nhận</label>
+                                <textarea 
+                                    ref={recordInputRef}
+                                    className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none text-sm shadow-inner mb-3"
+                                    placeholder="Ví dụ: [WHAT] NV hoàn thành xếp dỡ 42 cont/ca, vượt KPI. [WHERE] Bãi RTG03. [WHEN] Ca đêm 22/06. [WHO] Trần Văn B. [WHY] Giúp tàu rời đúng giờ. [HOW] Phối hợp nhịp nhàng cùng QC operator..."
+                                    value={recordContent}
+                                    onChange={(e) => setRecordContent(e.target.value)}
+                                />
+                                
+                                {/* BỔ SUNG: GIAO DIỆN UPLOAD ẢNH CHO GHI NHẬN */}
+                                {recordImage ? (
+                                    <div className="relative w-fit animate-fadeIn">
+                                        <ImagePreview src={recordImage} alt="Minh chứng ghi nhận" className="h-24 w-auto object-cover rounded-lg border border-gray-300 shadow-sm" />
+                                        <button 
+                                            onClick={() => setRecordImage(null)}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow hover:bg-red-600 transition"
+                                            title="Xóa ảnh"
+                                        >
+                                            <X size={14}/>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <label className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition w-fit shadow-sm">
+                                        <Camera size={18} className="text-indigo-500"/> Đính kèm ảnh minh chứng (Tùy chọn)
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleRecordImageUpload} />
+                                    </label>
+                                )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={handleSubmitRecord}
+                                    disabled={isProcessing || !recordContent}
+                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg flex items-center justify-center gap-2 text-sm"
+                                >
+                                    {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <Send size={16}/>} Lưu Ghi nhận
+                                </button>
+                            </div>
+                        </Card>
+                    )}
+                </div>
+
+                {/* RIGHT COLUMN: HISTORY LIST */}
+                <div className="lg:col-span-2 space-y-4">
+                     <Card className="h-full flex flex-col">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
+                            <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                                <History size={20}/> Lịch sử Ghi nhận
+                            </h3>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <div className="relative flex-grow">
+                                    <Search className="absolute left-2 top-2.5 text-gray-400" size={14}/>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Tìm kiếm..." 
+                                        className="pl-7 pr-2 py-2 border rounded-lg text-sm outline-none w-full"
+                                        value={historySearchTerm}
+                                        onChange={(e) => setHistorySearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                {/* NEW IMPORT BUTTON */}
+                                <button 
+                                    onClick={() => setShowRecordImportModal(true)}
+                                    className="px-3 py-2 rounded-lg border text-sm font-medium bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition flex items-center gap-2"
+                                    title="Import Excel"
+                                >
+                                    <FileUp size={16}/> <span className="hidden md:inline">Import</span>
+                                </button>
+                                
+                                <button 
+                                    onClick={() => setShowTrash(!showTrash)}
+                                    className={`px-3 py-2 rounded-lg border text-sm font-medium transition flex items-center gap-2 ${showTrash ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                                >
+                                    {showTrash ? <RotateCcw size={16}/> : <Trash2 size={16}/>} 
+                                    {showTrash ? 'Quay lại' : 'Thùng rác'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-grow overflow-y-auto max-h-[600px] pr-2 space-y-3 custom-scrollbar">
+                            {filteredHistoryRecords.length === 0 ? (
+                                <div className="text-center py-10">
+                                    <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        {showTrash ? <Trash2 className="text-gray-300" size={32}/> : <FileText className="text-gray-300" size={32}/>}
+                                    </div>
+                                    <p className="text-gray-400 italic">Chưa có dữ liệu {showTrash ? 'trong thùng rác' : ''}</p>
+                                </div>
+                            ) : (
+                                filteredHistoryRecords.map(rec => {
+                                    const ratingInfo = getRatingLabel(rec.rating || 3);
+                                    
+                                    // Identify Category Icon & Color
+                                    let CatIcon = CheckCircle2;
+                                    let catColorClass = "text-blue-600 bg-blue-50 border-blue-100";
+                                    if(rec.category === 'SAFETY') { CatIcon = ShieldAlert; catColorClass = "text-red-600 bg-red-50 border-red-100"; }
+                                    if(rec.category === 'ATTITUDE') { CatIcon = ThumbsUp; catColorClass = "text-purple-600 bg-purple-50 border-purple-100"; }
+                                    if(rec.category === 'ATTENDANCE') { CatIcon = Clock; catColorClass = "text-green-600 bg-green-50 border-green-100"; }
+
+                                    return (
+                                        <div key={rec.id} className={`p-4 rounded-xl border flex flex-col gap-3 transition hover:shadow-sm ${showTrash ? 'bg-red-50/50 border-red-100 opacity-75' : 'bg-white border-gray-100'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border font-bold text-xs ${ratingInfo.color}`}>
+                                                        {rec.rating || 3} <Star size={10} className="ml-0.5 fill-current"/>
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span 
+                                                                className="font-bold text-gray-800 cursor-pointer hover:text-indigo-600 transition"
+                                                                onClick={() => setDetailedEmployeeId(rec.targetId)}
+                                                            >
+                                                                {rec.targetName}
+                                                            </span>
+                                                            <span className="text-xs text-gray-400">({rec.targetCode})</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-bold flex items-center gap-1 ${catColorClass}`}>
+                                                                <CatIcon size={10}/> {rec.category || 'QUALITY'}
+                                                            </span>
+                                                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                                                                • {rec.date} • bởi 
+                                                                <span 
+                                                                    className="cursor-pointer hover:text-indigo-600 hover:underline ml-1"
+                                                                    onClick={() => setDetailedEmployeeId(rec.recorderId)}
+                                                                >
+                                                                    {rec.recorderName}
+                                                                </span>
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex gap-1">
+                                                    {showTrash ? (
+                                                        <button 
+                                                            onClick={() => handleRestoreRecord(rec.id)}
+                                                            className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition"
+                                                            title="Khôi phục"
+                                                        >
+                                                            <RotateCcw size={16}/>
+                                                        </button>
+                                                    ) : (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => { setEditingRecord(rec); setEditContent(rec.content); }}
+                                                                className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                                                title="Chỉnh sửa"
+                                                            >
+                                                                <Edit size={16}/>
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDeleteRecord(rec.id)}
+                                                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                                                title="Xóa tạm"
+                                                            >
+                                                                <Trash2 size={16}/>
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 leading-relaxed border border-gray-100">
+                                                <p className="whitespace-pre-wrap">{rec.content}</p>
+                                                {/* BỔ SUNG: HIỂN THỊ ẢNH TRONG LỊCH SỬ GHI NHẬN */}
+                                                {rec.image && (
+                                                    <div className="mt-3 border-t border-gray-200 pt-2 animate-fadeIn">
+                                                        <span className="text-[10px] text-gray-400 uppercase font-bold block mb-1">Ảnh đính kèm:</span>
+                                                        <ImagePreview src={rec.image} alt="Bằng chứng ghi nhận" className="h-32 w-auto object-cover rounded-lg border border-gray-300 shadow-sm" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                     </Card>
+                </div>
+            </div>
+        )}
+
+        {/* --- REPORT FEATURE (FULLY RESTORED) --- */}
+        {activeTab === 'report' && (
+            <div className="space-y-6 animate-fadeIn">
+                {/* 1. CONTROL BAR */}
+                <Card className="flex flex-col md:flex-row justify-between items-end gap-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100">
+                    <div className="flex flex-col gap-4 w-full md:w-auto flex-grow">
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                <FileSpreadsheet className="text-indigo-600" /> Báo cáo Hiệu suất (KPI)
+                            </h3>
+                            <p className="text-xs text-gray-500">Đánh giá dựa trên 4 trụ cột: An toàn - Chất lượng - Thái độ - Chuyên cần</p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {/* Mode Selector */}
+                            <div className="flex bg-white rounded-lg border p-1 shadow-sm">
+                                <button onClick={() => setReportMode('MONTH')} className={`px-3 py-1 rounded text-xs font-bold transition ${reportMode === 'MONTH' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}>Tháng</button>
+                                <button onClick={() => setReportMode('QUARTER')} className={`px-3 py-1 rounded text-xs font-bold transition ${reportMode === 'QUARTER' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}>Quý</button>
+                                <button onClick={() => setReportMode('YEAR')} className={`px-3 py-1 rounded text-xs font-bold transition ${reportMode === 'YEAR' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}>Năm</button>
+                            </div>
+
+                            {/* Time Picker */}
+                            {reportMode === 'MONTH' && (
+                                <input type="month" className="p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-indigo-500" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+                            )}
+                            {reportMode === 'YEAR' && (
+                                <select className="p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none" value={reportDate} onChange={(e) => setReportDate(e.target.value)}>
+                                    <option value="2023">2023</option>
+                                    <option value="2024">2024</option>
+                                    <option value="2025">2025</option>
+                                </select>
+                            )}
+                            {reportMode === 'QUARTER' && (
+                                <div className="flex gap-1">
+                                    <select className="p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none" value={reportQuarter} onChange={(e) => setReportQuarter(e.target.value)}>
+                                        <option value="Q1">Quý 1</option>
+                                        <option value="Q2">Quý 2</option>
+                                        <option value="Q3">Quý 3</option>
+                                        <option value="Q4">Quý 4</option>
+                                    </select>
+                                    <select className="p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none" value={reportYear} onChange={(e) => setReportYear(e.target.value)}>
+                                        <option value="2023">2023</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2025">2025</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Group Filter */}
+                            <select className="p-1.5 border rounded-lg text-sm font-bold text-gray-700 outline-none max-w-[150px]" value={reportGroup} onChange={(e) => setReportGroup(e.target.value)}>
+                                <option value="ALL">Tất cả BP</option>
+                                {GROUP_ORDER.filter(g => reportTypeTab === 'CMIT' ? !g.includes('AH') : g.includes('AH')).map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 w-full md:w-auto">
+                         {/* Search Box */}
+                        <div className="relative flex-grow md:flex-grow-0">
+                            <Search className="absolute left-2 top-2.5 text-gray-400" size={14}/>
+                            <input 
+                                type="text" 
+                                placeholder="Tìm nhân viên..." 
+                                className="pl-8 pr-2 py-2 border rounded-lg text-sm outline-none w-full"
+                                value={reportSearchTerm}
+                                onChange={(e) => setReportSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        {/* NÚT MỞ BÌNH BẦU NGÔI SAO AN TOÀN - THIẾT KẾ MỚI VỚI 2 LỰA CHỌN */}
+                        <div className="flex bg-white rounded-lg border p-1 shadow-sm shrink-0">
+                            <button 
+                                onClick={() => { setStarVoteType('MONTH'); setShowStarSetupModal(true); }}
+                                className="px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5 text-yellow-700 bg-yellow-50 hover:bg-yellow-100"
+                                title="Bình bầu Ngôi sao An toàn theo Tháng"
+                            >
+                                <Award size={14}/> Bầu Tháng
+                            </button>
+                            <button 
+                                onClick={() => { setStarVoteType('QUARTER'); setShowStarSetupModal(true); }}
+                                className="px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1.5 text-orange-700 hover:bg-orange-50 border-l border-gray-100"
+                                title="Bình bầu Ngôi sao An toàn theo Quý"
+                            >
+                                <Award size={14}/> Bầu Quý
+                            </button>
+                        </div>
+
+                        <button 
+                            onClick={handleRealExport}
+                            disabled={isProcessing}
+                            className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition flex items-center gap-2 whitespace-nowrap"
+                        >
+                            {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <FileSpreadsheet size={18}/>} Xuất Excel (NS)
+                        </button>
+
+                        {/* NEW EQUIPMENT EXPORT BUTTON */}
+                        <button 
+                            onClick={handleEquipmentExport}
+                            disabled={isProcessing}
+                            className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transition flex items-center gap-2 whitespace-nowrap"
+                            title="Xuất báo cáo tình trạng thiết bị theo thời gian lọc"
+                        >
+                            {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Database size={18}/>} Xuất Báo cáo TB
+                        </button>
+                    </div>
+                </Card>
+
+                {/* THIẾT KẾ MỚI: 2 TABS CHUYỂN ĐỔI CMIT / ADHOC */}
+                <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 mb-2">
+                    <button
+                        onClick={() => setReportTypeTab('CMIT')}
+                        className={`flex-1 py-3 rounded-lg text-sm font-black tracking-wide transition flex items-center justify-center gap-2 ${reportTypeTab === 'CMIT' ? 'bg-blue-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <Users size={18}/> NHÂN SỰ CMIT
+                    </button>
+                    <button
+                        onClick={() => setReportTypeTab('ADHOC')}
+                        className={`flex-1 py-3 rounded-lg text-sm font-black tracking-wide transition flex items-center justify-center gap-2 ${reportTypeTab === 'ADHOC' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                    >
+                        <Users size={18}/> NHÂN SỰ ADHOC
+                    </button>
+                </div>
+
+                {/* THIẾT KẾ MỚI: BÁO CÁO KPI DẠNG CARD GRID */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {getPerformanceStats.map(emp => {
+                        const empTheme = getThemeColors(emp.group, emp.code);
+                        return (
+                        <div key={emp.id} className={`bg-white rounded-2xl border-x border-b border-t-4 ${empTheme.border} shadow-sm overflow-hidden hover:shadow-md transition flex flex-col`}>
+                            {/* Header Card */}
+                            <div className="p-4 flex justify-between items-start border-b border-gray-50 bg-gray-50/50">
+                                <div 
+                                    className="flex items-center gap-3 cursor-pointer group"
+                                    onClick={() => setDetailedEmployeeId(emp.id)} // LIÊN KẾT NHÂN VIÊN TỪ BẢNG ĐIỂM
+                                >
+                                    <Avatar src={emp.avatar} alt={emp.name} size="md"/>
+                                    <div>
+                                        <div className={`font-bold text-base transition group-hover:underline ${empTheme.text}`}>{emp.name}</div>
+                                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{emp.code} • {emp.group}</div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            {/* Body: Chỉ số KPI Grid */}
+                            <div className="p-4 grid grid-cols-4 gap-2 flex-grow">
+                                <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-gray-50 border border-gray-100">
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase mb-1">Checklist</span>
+                                    <span className="text-lg font-black text-gray-700">{emp.checklistCount || 0}</span>
+                                </div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${emp.safetyScore >= 4 ? 'bg-green-50 border-green-100 text-green-700' : emp.safetyScore <= 2 ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                    <span className="text-[10px] font-bold uppercase mb-1 opacity-70">An toàn</span>
+                                    <span className="text-lg font-black">{emp.safetyScore}<span className="text-xs opacity-50">/5</span></span>
+                                </div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${emp.qualityScore >= 4 ? 'bg-blue-50 border-blue-100 text-blue-700' : emp.qualityScore <= 2 ? 'bg-orange-50 border-orange-100 text-orange-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                    <span className="text-[10px] font-bold uppercase mb-1 opacity-70">Chất lượng</span>
+                                    <span className="text-lg font-black">{emp.qualityScore}<span className="text-xs opacity-50">/5</span></span>
+                                </div>
+                                <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${emp.attitudeScore >= 4 ? 'bg-purple-50 border-purple-100 text-purple-700' : emp.attitudeScore <= 2 ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                    <span className="text-[10px] font-bold uppercase mb-1 opacity-70">Thái độ</span>
+                                    <span className="text-lg font-black">{emp.attitudeScore}<span className="text-xs opacity-50">/5</span></span>
+                                </div>
+                            </div>
+
+                            {/* Footer: Rank */}
+                            <div className="px-4 pb-4">
+                                <div className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-center border ${emp.rankColor}`}>
+                                    {emp.rank}
+                                </div>
+                            </div>
+                        </div>
+                        );
+                    })}
+                    {getPerformanceStats.length === 0 && (
+                        <div className="col-span-full p-10 text-center text-gray-400 italic bg-white rounded-xl border border-dashed border-gray-200">
+                            Không có dữ liệu đánh giá KPI cho Khối {reportTypeTab} trong giai đoạn này
+                        </div>
+                    )}
+                </div>
+                
+            </div>
+        )}
+
+        {/* --- MODAL 1: CẤU HÌNH THỜI GIAN BÌNH BẦU --- */}
+        <Modal isOpen={showStarSetupModal} onClose={() => setShowStarSetupModal(false)} title={`Cấu hình Bầu chọn (${starVoteType === 'MONTH' ? 'Theo Tháng' : 'Theo Quý'})`}>
+            <div className="space-y-5">
+                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200 text-sm text-yellow-800">
+                    <p className="font-bold mb-1">Quy tắc lọc hệ thống:</p>
+                    <ul className="list-disc ml-4 space-y-1">
+                        <li>Hệ thống sẽ tự động phân tích dữ liệu trong khoảng thời gian bạn chọn bên dưới.</li>
+                        <li>Chỉ xét nhóm <b>Nhân sự CMIT</b> (Loại bỏ ADHOC).</li>
+                        <li>Lọc và đề xuất <b>TOP 10 ứng viên</b> có KPI cao nhất và 0 vi phạm/điểm trừ.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Chọn thời gian muốn xét duyệt:</label>
+                    {starVoteType === 'MONTH' ? (
+                        <input 
+                            type="month" 
+                            className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-yellow-400 outline-none text-base font-bold bg-white"
+                            value={starSetupMonth} 
+                            onChange={(e) => setStarSetupMonth(e.target.value)} 
+                        />
+                    ) : (
+                        <div className="flex gap-2">
+                            <select 
+                                className="flex-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-yellow-400 outline-none text-base font-bold bg-white"
+                                value={starSetupQuarter} 
+                                onChange={(e) => setStarSetupQuarter(e.target.value)}
+                            >
+                                <option value="Q1">Quý 1</option><option value="Q2">Quý 2</option>
+                                <option value="Q3">Quý 3</option><option value="Q4">Quý 4</option>
+                            </select>
+                            <select 
+                                className="flex-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-yellow-400 outline-none text-base font-bold bg-white"
+                                value={starSetupYear} 
+                                onChange={(e) => setStarSetupYear(e.target.value)}
+                            >
+                                <option value="2024">Năm 2024</option><option value="2025">Năm 2025</option><option value="2026">Năm 2026</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex gap-3 justify-end pt-3">
+                    <button onClick={() => setShowStarSetupModal(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">Hủy</button>
+                    <button 
+                        onClick={handleGenerateCandidates}
+                        className="px-6 py-2.5 bg-yellow-500 text-white rounded-xl font-bold shadow-lg hover:bg-yellow-600 transition flex items-center gap-2"
+                    >
+                        <Filter size={18}/> Bắt đầu Lọc Top 10
+                    </button>
+                </div>
+            </div>
+        </Modal>
+
+        {/* --- MODAL 2: GIAO DIỆN BÌNH BẦU & CÔNG BỐ CHI TIẾT --- */}
+        <Modal isOpen={showStarVoteModal} onClose={() => setShowStarVoteModal(false)} title={`🌟 Bỏ Phiếu Ngôi Sao An Toàn`}>
+            <div className="space-y-4">
+                <div className="flex justify-between items-center bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">
+                    <div>
+                        <span className="text-xs text-gray-500 font-bold uppercase tracking-wide block">Kỳ đánh giá</span>
+                        <span className="font-mono text-indigo-700 font-bold text-sm">
+                            {starVoteType === 'MONTH' ? `Tháng ${starSetupMonth}` : `${starSetupQuarter} Năm ${starSetupYear}`}
+                        </span>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-xs text-gray-500 font-bold uppercase tracking-wide block">Phiếu của bạn</span>
+                        <span className={`font-black text-sm ${Object.keys(mySelections).length === 2 ? 'text-green-600' : 'text-orange-600'}`}>
+                            {Object.keys(mySelections).length} / 2
+                        </span>
+                    </div>
+                </div>
+                
+                {/* ADMIN DASHBOARD: XEM LƯỢT VOTE HIỆN TẠI */}
+                {(['CMIT SM'].includes(currentUser.group) || currentUser.id === 'SUPER_ADMIN') && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 animate-slideUp relative overflow-hidden">
+                        <div className="absolute right-0 top-0 opacity-10"><Award size={100}/></div>
+                        <h4 className="font-bold text-blue-900 text-xs uppercase mb-3 border-b border-blue-200 pb-2 relative z-10">Tình hình Bỏ phiếu (Real-time)</h4>
+                        
+                        {(() => {
+                            const periodStr = starVoteType === 'MONTH' ? starSetupMonth : `${starSetupYear}-${starSetupQuarter}`;
+                            const relevantVotes = starVotes.filter(v => v.period === periodStr);
+                            
+                            if (relevantVotes.length === 0) return <p className="text-xs italic text-blue-600 relative z-10">Chưa có Quản lý nào bỏ phiếu.</p>;
+
+                            const counts = {};
+                            relevantVotes.forEach(v => v.votes.forEach(vote => counts[vote.empId] = (counts[vote.empId] || 0) + 1));
+                            
+                            // Sắp xếp ID theo số lượng vote
+                            const sortedIds = Object.keys(counts).sort((a,b) => counts[b] - counts[a]);
+
+                            return (
+                                <div className="space-y-1.5 relative z-10 max-h-32 overflow-y-auto pr-1">
+                                    <div className="text-xs font-bold text-blue-700 mb-2">Đã nhận: {relevantVotes.length} lượt nộp.</div>
+                                    {sortedIds.map(id => {
+                                        const emp = employees.find(e => e.id === id);
+                                        return (
+                                            <div key={id} className="flex justify-between items-center bg-white/60 p-1.5 rounded border border-blue-100 text-xs">
+                                                <span className="font-medium truncate pr-2">{emp?.name || id}</span>
+                                                <span className="font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{counts[id]} phiếu</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
+
+                        <div className="mt-3 pt-3 border-t border-blue-200 flex justify-end relative z-10">
+                             <button 
+                                onClick={handleAnnounceWinner}
+                                disabled={isProcessing}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow flex items-center gap-1.5 transition active:scale-95"
+                            >
+                                {isProcessing ? <Loader2 className="animate-spin" size={14}/> : <Megaphone size={14}/>} 
+                                Chốt & Công bố Kết quả
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* DANH SÁCH ỨNG VIÊN TOP 10 */}
+                <div>
+                    <h4 className="font-bold text-gray-700 text-sm mb-2">
+                        Danh sách Top 10 CMIT ({starCandidates.length} ứng viên)
+                    </h4>
+                    
+                    <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1 custom-scrollbar pb-2">
+                        {starCandidates.map((emp, idx) => {
+                            const isChecked = mySelections[emp.id] !== undefined;
+                            const isDisabled = !isChecked && Object.keys(mySelections).length >= 2;
+
+                            return (
+                                <div 
+                                    key={emp.id} 
+                                    className={`p-3 rounded-xl border transition-all flex flex-col gap-2 ${isChecked ? 'bg-indigo-50 border-indigo-500 shadow-md ring-1 ring-indigo-200' : (isDisabled ? 'bg-gray-50 opacity-60 border-gray-200' : 'bg-white border-gray-200 hover:border-indigo-300')}`}
+                                >
+                                    <div className="flex justify-between items-center cursor-pointer" onClick={() => !isDisabled && toggleSelection(emp.id)}>
+                                        <div className="flex items-center gap-3">
+                                            {/* CHECKBOX */}
+                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 bg-white'}`}>
+                                                {isChecked && <CheckSquare size={14}/>}
+                                            </div>
+                                            <div className="relative">
+                                                <Avatar src={emp.avatar} alt={emp.name} size="sm"/>
+                                                {idx < 3 && <span className="absolute -top-1 -right-1 bg-yellow-400 rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-sm">👑</span>}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-gray-800 text-sm leading-tight">{emp.name}</div>
+                                                <div className="text-[10px] text-gray-500 mt-0.5">{emp.code} • {emp.position}</div>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="bg-green-100 text-green-800 font-black px-2 py-1 rounded-md text-xs border border-green-200 whitespace-nowrap">
+                                                KPI: {emp.starScore}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* MỞ RỘNG: Ô NHẬP COMMENT NẾU ĐƯỢC CHỌN */}
+                                    {isChecked && (
+                                        <div className="pl-8 pr-2 pt-2 animate-fadeIn border-t border-indigo-100 mt-1">
+                                            <textarea 
+                                                className="w-full p-2 text-xs border border-indigo-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                                placeholder="Viết vài lời nhận xét/khen ngợi cho ứng viên này (Tùy chọn)..."
+                                                rows={2}
+                                                value={mySelections[emp.id] || ''}
+                                                onChange={(e) => updateSelectionReason(emp.id, e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Trích dẫn Highlight */}
+                                    {!isChecked && emp.highlights.length > 0 && (
+                                        <div className="ml-8 bg-gray-50 p-2 rounded text-[10px] text-gray-500 border border-gray-100 italic">
+                                            <b>Nổi bật:</b> {emp.highlights[0].length > 60 ? emp.highlights[0].substring(0,60)+'...' : emp.highlights[0]}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-200 pt-4 flex gap-3">
+                    <button onClick={() => setShowStarVoteModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">Hủy & Đóng</button>
+                    <button 
+                        onClick={submitMyVotes} 
+                        disabled={isProcessing || Object.keys(mySelections).length === 0}
+                        className="flex-[2] py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold shadow-lg flex justify-center items-center gap-2 hover:opacity-90 disabled:opacity-50 transition"
+                    >
+                        {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Send size={18}/>} Nộp Phiếu ({Object.keys(mySelections).length}/2)
+                    </button>
+                </div>
+            </div>
+        </Modal>
+
+        {/* ... (Other Tabs Remain Unchanged) ... */}
+        {activeTab === 'personal' && (
+           <div className="max-w-md mx-auto">
+               <PersonalWorkspace 
+                  currentUser={currentUser} 
+                  employees={employees}
+                  attendance={attendance} 
+                  records={records}
+                  checklists={checklists} 
+                  safetyReports={safetyReports}
+                  ideas={ideas}
+                  news={news}
+                  topPerformers={topPerformers}
+                  showToast={showToast} 
+               />
+           </div>
+        )}
+
+        {activeTab === 'employees' && (
+          <div className="animate-fadeIn">
+            {/* ... (Existing Filter UI) ... */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+              <div>
+                  <h3 className="font-bold text-gray-700 text-lg">Danh sách nhân viên ({filteredEmployees.length})</h3>
+                  {filterReset && (
+                      <span className="text-xs text-red-500 flex items-center gap-1 cursor-pointer hover:underline mt-1 bg-red-50 px-2 py-1 rounded w-fit" onClick={() => setFilterReset(false)}>
+                          <X size={12}/> Đang lọc: Yêu cầu Reset Pass
+                      </span>
+                  )}
+              </div>
+              
+              <div className="flex gap-2 w-full md:w-auto">
+                  <div className="relative flex-grow md:flex-grow-0">
+                      <Search className="absolute left-3 top-2.5 text-gray-400" size={16}/>
+                      <input 
+                        type="text" 
+                        placeholder="Tìm tên, mã, vị trí, sđt..." 
+                        className="pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-full md:w-64"
+                        value={empSearchTerm}
+                        onChange={(e) => setEmpSearchTerm(e.target.value)}
+                      />
+                      {empSearchTerm && <X size={14} className="absolute right-3 top-3 text-gray-400 cursor-pointer hover:text-red-500" onClick={() => setEmpSearchTerm('')} />}
+                  </div>
+                  
+                  <button 
+                    onClick={() => setFilterReset(!filterReset)}
+                    className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 transition ${filterReset ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-100' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                    title="Lọc yêu cầu Reset Password"
+                  >
+                    <Filter size={16}/> {pendingResets > 0 && <span className="bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">{pendingResets}</span>}
+                  </button>
+
+                  {/* CÁC NÚT IMPORT/EXPORT VÀ BACKUP HỆ THỐNG */}
+                  <div className="flex gap-2">
+                      {/* Nút Backup Hệ Thống */}
+                      <button 
+                        onClick={handleSystemBackup} 
+                        disabled={isProcessing}
+                        className="flex items-center gap-2 bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 shadow text-sm font-bold whitespace-nowrap transition"
+                        title="Tải xuống toàn bộ dữ liệu hệ thống (JSON)"
+                      >
+                        {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <DownloadCloud size={18} />} 
+                        <span className="hidden lg:inline">Backup</span>
+                      </button>
+
+                      {/* Nút Khôi phục Dữ liệu */}
+                      <button 
+                        onClick={() => setShowBackupModal(true)}
+                        disabled={isProcessing}
+                        className="flex items-center gap-2 bg-orange-500 text-white px-3 py-2 rounded-lg hover:bg-orange-600 shadow text-sm font-bold whitespace-nowrap transition"
+                        title="Khôi phục dữ liệu từ file Backup"
+                      >
+                        <UploadCloud size={18} /> 
+                        <span className="hidden lg:inline">Restore</span>
+                      </button>
+
+                      {/* Nút Xuất Master Data Mới */}
+                      <button 
+                        onClick={handleMasterDataExport} 
+                        disabled={isProcessing}
+                        className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 shadow text-sm font-bold whitespace-nowrap"
+                      >
+                        {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Database size={18} />} 
+                        <span className="hidden lg:inline">Master Data</span>
+                      </button>
+
+                      <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 shadow text-sm font-bold">
+                        <FileSpreadsheet size={18} /> <span className="hidden lg:inline">Import</span>
+                      </button>
+                  </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-gray-500 font-medium uppercase text-xs">
+                    <tr><th className="p-4">Ảnh</th><th className="p-4">Group</th><th className="p-4">Mã NV</th><th className="p-4">Họ và Tên</th><th className="p-4">Vị trí / Lộ trình</th><th className="p-4">Liên hệ</th><th className="p-4">Mật khẩu</th><th className="p-4 text-center">Tác vụ</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredEmployees.map(emp => {
+                      const empTheme = getThemeColors(emp.group, emp.code);
+                      return (
+                      <tr key={emp.id} className={`hover:bg-gray-50 transition ${emp.isBanned ? 'bg-red-50/60' : ''}`}>
+                        <td className={`p-4 border-l-4 ${emp.isBanned ? 'border-red-500' : empTheme.border}`}>
+                            <div className="cursor-pointer relative" onClick={() => setDetailedEmployeeId(emp.id)}>
+                                <Avatar src={emp.avatar} alt={emp.name} size="sm" theme={empTheme}/>
+                                {emp.isBanned && <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-black shadow">🚫</span>}
+                            </div>
+                        </td>
+                        <td className="p-4"><GroupBadge group={emp.group} code={emp.code} /></td>
+                        <td className={`p-4 font-mono font-medium ${emp.isBanned ? 'text-red-500' : empTheme.text}`}>{emp.code}</td>
+                        <td 
+                            className="p-4 font-bold text-gray-800 cursor-pointer hover:underline transition"
+                            onClick={() => setDetailedEmployeeId(emp.id)}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {emp.name}
+                            {emp.isBanned && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-black uppercase border border-red-200">KHÓA</span>}
+                          </div>
+                        </td>
+                        <td className="p-4 text-gray-600">
+                            <div>{emp.position}</div>
+                            {(emp.routeLine || emp.commuteMethod) && (
+                                <div className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded mt-1 w-fit border border-gray-200">
+                                    {emp.routeLine} {emp.routeLine && emp.commuteMethod && ' • '} {emp.commuteMethod}
+                                </div>
+                            )}
+                        </td>
+                        <td className="p-4 text-xs">
+                          {emp.phone && <div className="flex items-center gap-1"><Phone size={10}/> {emp.phone}</div>}
+                          {emp.email && <div className="flex items-center gap-1 text-gray-500"><Mail size={10}/> {emp.email}</div>}
+                        </td>
+                        <td className="p-4 font-mono text-red-600 bg-red-50 rounded px-2 py-1 text-xs w-fit whitespace-nowrap">
+                          {emp.password || 'Trống'}
+                        </td>
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                              {/* NÚT CHUYỂN GIAO THÊM MỚI */}
+                              <button 
+                                  onClick={() => {
+                                      setTransitionEmp(emp);
+                                      setTransitionForm({ newGroup: emp.group, newPosition: emp.position, newCode: emp.code, reason: '' });
+                                      setTransitionAdminPass(''); // ĐẶT LẠI TRƯỜNG PASSWORD
+                                      setShowTransitionModal(true);
+                                  }}
+                                  className="text-indigo-600 hover:bg-indigo-50 px-2 py-1.5 rounded border border-indigo-200 text-xs font-bold transition flex items-center gap-1"
+                                  title="Chuyển đổi Bộ phận / Chức vụ"
+                              >
+                                  <RefreshCw size={14}/> Chuyển
+                              </button>
+                              
+                              {(emp.resetRequested || emp.isFirstLogin === false) && (
+                                <button 
+                                  onClick={() => {
+                                      handleResetPassword(emp.id);
+                                      setResetAdminPass(''); // ĐẶT LẠI TRƯỜNG PASSWORD
+                                  }}
+                                  className="text-blue-600 hover:bg-blue-50 px-2 py-1.5 rounded border border-blue-200 text-xs font-bold transition flex items-center gap-1"
+                                  title="Reset về mặc định"
+                                >
+                                  <RotateCcw size={14}/> Reset
+                                </button>
+                              )}
+                          </div>
+                        </td>
+                      </tr>
+                      );
+                    })}
+                    {filteredEmployees.length === 0 && <tr><td colSpan="8" className="p-8 text-center text-gray-400 italic">Không tìm thấy dữ liệu phù hợp</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tsv' && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <RefreshCw size={48} className="mb-4 opacity-50"/>
+                <p>Chức năng đối soát đang được phát triển...</p>
+            </div>
+        )}
+      </div>
+
+      {/* ── Mobile Bottom Navigation ───────────────────────── */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-50"
+           style={{boxShadow:'0 -4px 16px rgba(0,0,0,.08)', paddingBottom:'env(safe-area-inset-bottom)'}}>
+        <div className="flex items-stretch h-[60px]">
+          {[
+            {id:'overview',          icon:<LayoutDashboard size={21}/>, label:'Tổng quan',  badge:0},
+            {id:'checklist_monitor', icon:<HeartPulse size={21}/>,     label:'Thiết bị',   badge:criticalIssues.length},
+            {id:'__record__',        icon:null,                          label:'Ghi nhận',   badge:0, isCta:true},
+            {id:'guests',            icon:<HardHat size={21}/>,          label:'Khách',      badge:pendingGuestCount},
+            {id:'approval',          icon:<CheckCircle2 size={21}/>,    label:'Báo cáo',    badge:pendingReports},
+          ].map(tab => {
+            if(tab.isCta) return (
+              <button key="record" onClick={()=>setActiveTab('record')}
+                className="flex flex-col items-center justify-center flex-1 -mt-4">
+                <div className="w-13 h-13 w-[52px] h-[52px] bg-[#0f4c81] rounded-full flex items-center justify-center text-white shadow-lg border-[3px] border-white transition active:scale-95">
+                  <Star size={22} className="fill-white"/>
+                </div>
+                <span className="text-[9px] font-black mt-0.5 text-[#0f4c81]">Ghi nhận</span>
+              </button>
+            );
+            const active = activeTab===tab.id;
+            return (
+              <button key={tab.id} onClick={()=>setActiveTab(tab.id)}
+                className={`relative flex flex-col items-center justify-center flex-1 transition-colors ${active?'text-[#0f4c81]':'text-gray-400 hover:text-gray-600'}`}>
+                {tab.icon}
+                <span className="text-[9px] font-bold mt-0.5">{tab.label}</span>
+                {tab.badge>0 && <span className="absolute top-2 right-3 bg-red-500 text-white text-[8px] font-black min-w-[14px] h-[14px] rounded-full flex items-center justify-center px-0.5">{tab.badge}</span>}
+                {active && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-[#0f4c81] rounded-full"/>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ... (Import Modal and Reset Modal) ... */}
+      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import Dữ liệu Nhân sự">
+          <div className="space-y-4">
+             <div className={`border-2 border-dashed border-indigo-200 bg-indigo-50 rounded-xl p-6 text-center relative ${isProcessing ? 'opacity-50' : ''}`}>
+                <input type="file" accept=".xlsx, .xls, .csv" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileUpload} disabled={isProcessing}/>
+                <div className="flex flex-col items-center justify-center text-indigo-500 pointer-events-none">
+                   {isProcessing ? <Loader2 size={40} className="animate-spin"/> : <FileUp size={40} />}
+                   <span className="font-bold text-sm mt-2">{isProcessing ? "Đang xử lý..." : "Chọn file Excel/CSV"}</span>
+                </div>
+             </div>
+            <textarea className="w-full h-32 p-3 border rounded-lg text-sm font-mono bg-white" placeholder="Dữ liệu text..." value={importText} onChange={(e) => setImportText(e.target.value)}/>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={handleImportEmployees} className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow flex items-center gap-2"><Save size={16}/> Cập nhật</button>
+            </div>
+          </div>
+      </Modal>
+
+      {/* NEW MODAL: IMPORT RECORDS */}
+      <Modal isOpen={showRecordImportModal} onClose={() => setShowRecordImportModal(false)} title="Import Ghi nhận Hàng loạt">
+          <div className="space-y-4">
+             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-xs text-blue-800">
+                <p className="font-bold mb-1">Lưu ý định dạng Excel:</p>
+                <ul className="list-disc ml-4 space-y-1">
+                    <li>Bắt buộc phải có cột: <b>Mã NV</b> và <b>Họ Tên</b> (để khớp dữ liệu).</li>
+                    <li>Nên có cột: <b>Ngày</b> (Nếu thiếu sẽ lấy ngày hiện tại).</li>
+                    <li>Các cột còn lại sẽ được lưu vào nội dung ghi nhận.</li>
+                </ul>
+             </div>
+             <div className={`border-2 border-dashed border-green-200 bg-green-50 rounded-xl p-6 text-center relative ${isProcessing ? 'opacity-50' : ''}`}>
+                <input type="file" accept=".xlsx, .xls, .csv" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleRecordFileUpload} disabled={isProcessing}/>
+                <div className="flex flex-col items-center justify-center text-green-600 pointer-events-none">
+                   {isProcessing ? <Loader2 size={40} className="animate-spin"/> : <FileSpreadsheet size={40} />}
+                   <span className="font-bold text-sm mt-2">{isProcessing ? "Đang xử lý..." : "Chọn file Excel Ghi nhận"}</span>
+                </div>
+             </div>
+            <textarea 
+                className="w-full h-32 p-3 border rounded-lg text-sm font-mono bg-white focus:ring-2 focus:ring-green-500 outline-none" 
+                placeholder="Dữ liệu text sau khi parse..." 
+                value={importRecordText} 
+                onChange={(e) => setImportRecordText(e.target.value)}
+            />
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                onClick={handleImportRecords} 
+                disabled={isProcessing || !importRecordText}
+                className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg shadow flex items-center gap-2 hover:bg-green-700 transition"
+              >
+                  {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} 
+                  Thực hiện Import
+              </button>
+            </div>
+          </div>
+      </Modal>
+
+      {/* NEW MODAL: SYSTEM RESTORE */}
+      <Modal isOpen={showBackupModal} onClose={() => setShowBackupModal(false)} title="⚠️ KHÔI PHỤC DỮ LIỆU HỆ THỐNG">
+          <div className="space-y-4">
+             <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 text-sm text-orange-900 flex items-start gap-3">
+                <AlertTriangle size={24} className="text-orange-600 shrink-0 mt-0.5"/>
+                <div>
+                    <p className="font-bold text-base mb-1">CẢNH BÁO QUAN TRỌNG</p>
+                    <p>Hành động này sẽ cập nhật (ghi đè) toàn bộ dữ liệu hiện tại bằng dữ liệu từ file backup. Vui lòng đảm bảo bạn đã chọn đúng file.</p>
+                </div>
+             </div>
+
+             <div className={`border-2 border-dashed border-orange-300 bg-orange-50 rounded-xl p-8 text-center relative hover:bg-orange-100 transition ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}>
+                <input 
+                    type="file" 
+                    accept=".json" 
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                    onChange={handleSystemRestore} 
+                    disabled={isProcessing}
+                />
+                <div className="flex flex-col items-center justify-center text-orange-600 pointer-events-none">
+                   {isProcessing ? <Loader2 size={48} className="animate-spin"/> : <UploadCloud size={48} />}
+                   <span className="font-bold text-lg mt-3">{isProcessing ? "Đang khôi phục..." : "Chọn file Backup (.json)"}</span>
+                   {backupProgress && <span className="text-sm font-medium mt-2 text-orange-800 animate-pulse">{backupProgress}</span>}
+                </div>
+             </div>
+
+             <div className="flex justify-end gap-3 pt-2">
+                <button 
+                    onClick={() => setShowBackupModal(false)} 
+                    disabled={isProcessing}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition"
+                >
+                    Hủy bỏ
+                </button>
+             </div>
+          </div>
+      </Modal>
+
+      <Modal isOpen={!!resetTargetId} onClose={() => setResetTargetId(null)} title="Xác nhận Reset Mật khẩu">
+         <div className="text-center py-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 mb-4"><Key size={32} /></div>
+            <h4 className="font-bold text-gray-800 text-lg mb-2">Reset về mặc định?</h4>
+            <p className="text-gray-500 text-sm mb-4">Mật khẩu sẽ bị xóa và nhân viên sẽ phải thiết lập lại từ đầu khi đăng nhập.</p>
+            
+            {/* THÊM KHUNG NHẬP MẬT KHẨU QUẢN LÝ */}
+            <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-6 text-left">
+                <label className="block text-xs font-bold text-red-800 uppercase mb-1">
+                    Xác thực Quản lý
+                </label>
+                <input 
+                    type="password" 
+                    className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-red-500 text-sm bg-white"
+                    placeholder="Nhập mật khẩu của bạn để xác nhận..."
+                    value={resetAdminPass}
+                    onChange={(e) => setResetAdminPass(e.target.value)}
+                />
+            </div>
+
+            <div className="flex gap-3">
+                <button onClick={() => setResetTargetId(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium">Hủy bỏ</button>
+                <button 
+                    onClick={confirmResetPassword} 
+                    disabled={isProcessing || !resetAdminPass}
+                    className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-medium shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <RefreshCcw size={18}/>} Xác nhận
+                </button>
+            </div>
+         </div>
+      </Modal>
+
+      {/* CONFIRM DELETE RECORD MODAL */}
+      <Modal isOpen={!!deleteRecordId} onClose={() => setDeleteRecordId(null)} title="Xác nhận Xóa Ghi nhận">
+         <div className="text-center py-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 mb-4"><Trash2 size={32} /></div>
+            <h4 className="font-bold text-gray-800 text-lg mb-2">Chuyển vào thùng rác?</h4>
+            <p className="text-gray-500 text-sm mb-6">Dữ liệu sẽ được lưu trong 30 ngày trước khi xóa vĩnh viễn.</p>
+            <div className="flex gap-3">
+                <button onClick={() => setDeleteRecordId(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium">Hủy bỏ</button>
+                <button onClick={confirmSoftDeleteRecord} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-medium shadow-lg flex items-center justify-center gap-2">
+                    {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Trash2 size={18}/>} Xóa
+                </button>
+            </div>
+         </div>
+      </Modal>
+
+      {/* EDIT RECORD MODAL */}
+      <Modal isOpen={!!editingRecord} onClose={() => setEditingRecord(null)} title="Chỉnh sửa Ghi nhận">
+          <div className="space-y-4">
+              <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Nội dung mới</label>
+                  <textarea 
+                      className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-32 resize-none"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                  />
+              </div>
+              <div className="flex gap-3 justify-end">
+                  <button onClick={() => setEditingRecord(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium">Hủy</button>
+                  <button onClick={handleUpdateRecord} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium shadow">Lưu thay đổi</button>
+              </div>
+          </div>
+      </Modal>
+
+      {/* THÊM: MODAL ĐỂ DRILL-DOWN ITEM BẤT KỲ TỪ OVERVIEW */}
+      <Modal isOpen={!!selectedFeedItem} onClose={() => setSelectedFeedItem(null)} title="Chi tiết báo cáo / Sáng kiến">
+          {selectedFeedItem && (
+              <ActivityFeedCard 
+                  item={selectedFeedItem} 
+                  employees={employees} 
+                  currentUser={currentUser} 
+                  onPostComment={handlePostComment} 
+                  commentText={commentText} 
+                  setCommentText={setCommentText} 
+                  onUserClick={(empId) => { setSelectedFeedItem(null); setDetailedEmployeeId(empId); }}
+                  onEditRequest={(item) => { setSelectedFeedItem(null); handleEditRequest(item); }} // Đóng modal chi tiết rồi mở modal sửa
+                  onEquipmentClick={setSelectedEquipmentId} // LIÊN KẾT THIẾT BỊ TỪ MODAL
+              />
+          )}
+      </Modal>
+
+      {/* THÊM: MODAL ĐỂ DRILL-DOWN CHECKLIST TỪ OVERVIEW */}
+      <Modal 
+          isOpen={!!selectedChecklistLog} 
+          onClose={() => setSelectedChecklistLog(null)} 
+          title={selectedChecklistLog ? `Chi tiết Checklist: ${selectedChecklistLog.equipmentId}` : "Chi tiết Checklist"}
+      >
+          {selectedChecklistLog && (
+               <div className="border rounded-xl p-4 bg-white relative overflow-hidden">
+                   {/* Log Header */}
+                   <div className="flex justify-between items-start mb-2 border-b pb-2 border-gray-100">
+                       <div className="flex items-center gap-2">
+                           <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                               <CalendarDays size={14}/> {selectedChecklistLog.date}
+                           </div>
+                           <div className="bg-gray-100 p-1.5 rounded text-gray-600 font-bold text-xs">
+                               <Clock size={14}/> {selectedChecklistLog.shift}
+                           </div>
+                       </div>
+                       <div className={`text-xs font-bold px-2 py-1 rounded uppercase ${selectedChecklistLog.status === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                           {selectedChecklistLog.status === 'CRITICAL' ? 'Có lỗi' : 'Tốt'}
+                       </div>
+                   </div>
+
+                   {/* Technical Stats */}
+                   <div className="mb-3 text-xs">
+                       <div>
+                           <span className="text-gray-400 block uppercase font-bold text-[10px]">Nhiên liệu</span>
+                           <div className="flex items-center gap-2">
+                              <span className="font-mono text-gray-800 font-bold text-sm">{selectedChecklistLog.fuel || '--'}%</span>
+                              {selectedChecklistLog.fuel && (
+                                  <div className={`h-1.5 w-12 rounded-full ${parseInt(selectedChecklistLog.fuel) < 35 ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                              )}
+                           </div>
+                       </div>
+                   </div>
+
+                   {/* Defect Details */}
+                   <div className="bg-gray-50 p-2 rounded-lg text-sm mb-2 border border-gray-100">
+                       <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Chi tiết kiểm tra:</span>
+                       <ChecklistLogDetails log={selectedChecklistLog} />
+                   </div>
+
+                   {/* Reporter Info */}
+                   <div className="text-[10px] text-gray-400 flex justify-end items-center gap-1">
+                       <UserCheck size={12}/> Người kiểm tra: 
+                       <b 
+                           className="cursor-pointer hover:text-indigo-600 hover:underline"
+                           onClick={() => { setSelectedChecklistLog(null); setDetailedEmployeeId(selectedChecklistLog.reporterId); }} // LIÊN KẾT TỪ TRONG MODAL
+                       >
+                           {selectedChecklistLog.reporterName}
+                       </b>
+                   </div>
+               </div>
+          )}
+      </Modal>
+
+      {/* --- BỔ SUNG MODAL: HỒ SƠ NĂNG LỰC NHÂN VIÊN (DEEP VIEW) --- */}
+      <Modal isOpen={!!detailedEmployeeId} onClose={() => setDetailedEmployeeId(null)} title="Hồ sơ Năng lực (Deep View)">
+          {(() => {
+              // SỬA LỖI: Lấy từ đối tượng tính toán độc lập thay vì mảng getPerformanceStats (do mảng đó bị giới hạn bởi Tab CMIT/ADHOC)
+              const empProfile = detailedEmployeeProfile;
+              
+              if (!empProfile) {
+                  return <div className="p-8 text-center text-gray-500">Đang tải hoặc không tìm thấy dữ liệu nhân sự này.</div>;
+              }
+
+              // THÊM: Kiểm tra quyền xem nút "Ghi nhận nhanh"
+              const isAllowedToRecord = canRecord(currentUser.group, empProfile.group);
+              const theme = getThemeColors(empProfile.group, empProfile.code);
+
+              // CẬP NHẬT: Helper tính Lộ trình Phát triển theo Năm (Jan - Dec)
+              const getGroupForMonth = (emp, monthTimestamp) => {
+                  if (!emp.careerTimeline || emp.careerTimeline.length === 0) return emp.group;
+                  const pastTransitions = emp.careerTimeline.filter(t => t.timestamp <= monthTimestamp);
+                  if (pastTransitions.length === 0) return emp.careerTimeline[0].fromGroup;
+                  return pastTransitions[pastTransitions.length - 1].toGroup;
+              };
+
+              const currentMonth = new Date().getMonth();
+              const currentYear = new Date().getFullYear();
+              
+              // 1. Tìm tất cả các năm có sự kiện trong lộ trình + năm hiện tại
+              const availableYears = new Set([currentYear]);
+              if (empProfile.careerTimeline) {
+                  empProfile.careerTimeline.forEach(t => availableYears.add(new Date(t.timestamp).getFullYear()));
+              }
+              const yearsList = Array.from(availableYears).sort((a,b) => b - a);
+
+              // 2. Tạo danh sách 12 tháng theo `timelineYear` được chọn
+              const monthsInYear = Array.from({length: 12}, (_, i) => {
+                  const d = new Date(timelineYear, i + 1, 0); // Lấy ngày cuối cùng của tháng để check status
+                  return { month: i + 1, year: timelineYear, timestamp: d.getTime() };
+              });
+
+              return (
+                  <div className="space-y-5 animate-fadeIn">
+                      {/* CẢNH BÁO BAN NẾU NV BỊ KHÓA */}
+                      {empProfile.isBanned && (
+                          <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 flex items-start gap-3">
+                              <div className="text-red-500 shrink-0 mt-0.5"><AlertTriangle size={20}/></div>
+                              <div className="flex-1">
+                                  <p className="font-black text-red-700 text-sm uppercase tracking-wide">Tài khoản đang bị KHÓA</p>
+                                  <p className="text-sm text-red-600 mt-0.5">{empProfile.banReason}</p>
+                                  <div className="flex gap-3 mt-1 text-xs text-red-400 flex-wrap">
+                                      {empProfile.bannedBy && <span>Khóa bởi: <b>{empProfile.bannedBy}</b></span>}
+                                      {empProfile.bannedAt && <span>Ngày: {new Date(empProfile.bannedAt).toLocaleDateString('vi-VN')}</span>}
+                                  </div>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Tóm tắt Profile */}
+                      <div className={`flex items-center gap-4 ${empProfile.isBanned ? 'bg-red-50 border-red-200' : theme.primaryLightBg} p-4 rounded-xl border ${empProfile.isBanned ? 'border-red-200 border-t-4 border-t-red-500' : theme.primaryBorder + ' border-t-4'} relative`}>
+                          <Avatar src={empProfile.avatar} alt={empProfile.name} size="lg" theme={theme}/>
+                          <div>
+                              <h2 className={`text-xl font-black ${empProfile.isBanned ? 'text-red-700' : theme.primaryTextDark}`}>{empProfile.name}</h2>
+                              <p className={`text-sm font-bold ${empProfile.isBanned ? 'text-red-500' : theme.primaryText}`}>{empProfile.code} • {empProfile.position}</p>
+                              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                  <GroupBadge group={empProfile.group} code={empProfile.code} />
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider text-white ${empProfile.rankColor.replace('bg-', 'bg-').replace('text-', 'text-white ')}`}>
+                                      {empProfile.rank}
+                                  </span>
+                                  {empProfile.isBanned && (
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider text-white bg-red-600 flex items-center gap-1">
+                                          🚫 KHÓA
+                                      </span>
+                                  )}
+                              </div>
+                              {/* Thông tin tuyến xe nếu có */}
+                              {(empProfile.routeLine || empProfile.commuteMethod) && (
+                                  <div className="mt-2 text-xs font-medium bg-white px-2 py-1 rounded border shadow-sm w-fit">
+                                      🚌 Tuyến: {empProfile.routeLine || 'Chưa ĐK'} • {empProfile.commuteMethod || 'Tự túc'}
+                                  </div>
+                              )}
+                              {empProfile.phone && (
+                                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                                      <Phone size={12}/> {empProfile.phone}
+                                  </p>
+                              )}
+                          </div>
+                          
+                          {/* NÚT GHI NHẬN NHANH + NÚT BAN */}
+                          <div className="absolute top-4 right-4 flex flex-col gap-2 items-end">
+                              {isAllowedToRecord && !empProfile.isBanned && (
+                                  <button 
+                                      onClick={() => {
+                                          setSelectedEmployee(empProfile);
+                                          setActiveTab('record');
+                                          setDetailedEmployeeId(null);
+                                      }}
+                                      className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:bg-indigo-700 transition flex items-center gap-1.5 active:scale-95"
+                                      title="Thực hiện ghi nhận cho nhân viên này"
+                                  >
+                                      <Star size={14} className="fill-white"/> <span className="hidden sm:inline">Ghi nhận</span>
+                                  </button>
+                              )}
+                              {/* NÚT BAN / MỞ KHÓA */}
+                              <button
+                                  onClick={() => { setBanTargetEmp(empProfile); setBanReason(empProfile.banReason || ''); setBanAdminPass(''); setShowBanModal(true); }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-md transition flex items-center gap-1.5 active:scale-95 ${empProfile.isBanned ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                                  title={empProfile.isBanned ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                              >
+                                  {empProfile.isBanned ? <><CheckCircle2 size={13}/> Mở khóa</> : <><XCircle size={13}/> Khóa TK</>}
+                              </button>
+                          </div>
+                      </div>
+
+                      {/* NEW: THÊM LỘ TRÌNH PHÁT TRIỂN THEO NĂM ĐÃ CHỌN */}
+                      <div>
+                          <div className="flex justify-between items-center mb-3">
+                              <h4 className="font-bold text-gray-700 text-xs uppercase flex items-center gap-1">
+                                  <Milestone size={14} className="text-indigo-600"/> Lộ trình Phát triển
+                              </h4>
+                              {yearsList.length > 1 && (
+                                  <select 
+                                      className="p-1.5 text-xs border border-indigo-200 rounded-md outline-none font-bold text-indigo-700 bg-indigo-50 cursor-pointer shadow-sm"
+                                      value={timelineYear}
+                                      onChange={(e) => setTimelineYear(Number(e.target.value))}
+                                  >
+                                      {yearsList.map(y => <option key={y} value={y}>Năm {y}</option>)}
+                                  </select>
+                              )}
+                          </div>
+                          
+                          <div className="flex justify-between items-end gap-1 overflow-x-auto pb-2 custom-scrollbar">
+                              {monthsInYear.map((m, idx) => {
+                                  const groupAtMonth = getGroupForMonth(empProfile, m.timestamp);
+                                  const monthTheme = getThemeColors(groupAtMonth, empProfile.code); 
+                                  const isCurrentMonth = m.month === (currentMonth + 1) && m.year === currentYear;
+
+                                  return (
+                                      <div key={idx} className="flex flex-col items-center gap-1 min-w-[28px] group relative">
+                                          {/* Hiển thị Tooltip tự chế trên Hover */}
+                                          <div className="absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 font-bold">
+                                              T{m.month}/{m.year}: {groupAtMonth}
+                                          </div>
+                                          <div className={`w-full ${isCurrentMonth ? 'h-10 ring-2 ring-indigo-400' : 'h-8'} rounded-sm ${monthTheme.primaryBg} opacity-80 group-hover:opacity-100 transition shadow-sm cursor-pointer`}></div>
+                                          <span className={`text-[8px] font-bold ${isCurrentMonth ? 'text-indigo-600' : 'text-gray-400'}`}>T{m.month}</span>
+                                      </div>
+                                  )
+                              })}
+                          </div>
+
+                          {/* List Milestones */}
+                          {empProfile.careerTimeline && empProfile.careerTimeline.length > 0 && (
+                              <div className="mt-3 space-y-3 border-l-2 border-indigo-100 pl-4 ml-2">
+                                  {empProfile.careerTimeline.map((t, i) => (
+                                      <div key={i} className="relative text-xs bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                                          <div className="absolute -left-[23px] top-1/2 -translate-y-1/2 bg-white p-0.5 rounded-full ring-2 ring-white">
+                                              <GitCommit size={14} className={t.type === 'CONVERSION' ? 'text-orange-500' : 'text-indigo-500'}/>
+                                          </div>
+                                          <div className="flex justify-between items-start mb-1">
+                                              <span className="font-bold text-gray-800">{t.date}</span>
+                                              <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider ${t.type === 'CONVERSION' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                  {t.type === 'CONVERSION' ? 'Ký Hợp Đồng' : 'Điều Chuyển'}
+                                              </span>
+                                          </div>
+                                          <p className="text-gray-600">
+                                              <ArrowRightLeft size={10} className="inline mr-1 text-gray-400"/>
+                                              Được điều động sang bộ phận <span className="font-bold text-indigo-700">{t.toGroup}</span> với chức vụ <span className="font-bold">{t.toPosition}</span>.
+                                          </p>
+                                          {t.reason && <p className="text-[10px] text-gray-500 italic mt-1 bg-white p-1 rounded border">"{t.reason}"</p>}
+                                      </div>
+                                  ))}
+                              </div>
+                          )}
+                      </div>
+
+                      {/* Mini KPI Dashboard */}
+                      <div>
+                          <h3 className="font-bold text-gray-700 text-sm mb-2 uppercase">KPI 4 Trụ cột (Kỳ báo cáo hiện tại)</h3>
+                          <div className="grid grid-cols-4 gap-2">
+                              <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${empProfile.safetyScore >= 4 ? 'bg-green-50 border-green-100 text-green-700' : empProfile.safetyScore <= 2 ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                  <span className="text-[10px] font-bold uppercase mb-1 opacity-70">An toàn</span>
+                                  <span className="text-lg font-black">{empProfile.safetyScore}<span className="text-xs opacity-50">/5</span></span>
+                              </div>
+                              <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${empProfile.qualityScore >= 4 ? 'bg-blue-50 border-blue-100 text-blue-700' : empProfile.qualityScore <= 2 ? 'bg-orange-50 border-orange-100 text-orange-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                  <span className="text-[10px] font-bold uppercase mb-1 opacity-70">Chất lượng</span>
+                                  <span className="text-lg font-black">{empProfile.qualityScore}<span className="text-xs opacity-50">/5</span></span>
+                              </div>
+                              <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${empProfile.attitudeScore >= 4 ? 'bg-purple-50 border-purple-100 text-purple-700' : empProfile.attitudeScore <= 2 ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                  <span className="text-[10px] font-bold uppercase mb-1 opacity-70">Thái độ</span>
+                                  <span className="text-lg font-black">{empProfile.attitudeScore}<span className="text-xs opacity-50">/5</span></span>
+                              </div>
+                              <div className={`flex flex-col items-center justify-center p-2 rounded-xl border ${empProfile.attendanceScore >= 4 ? 'bg-green-50 border-green-100 text-green-700' : empProfile.attendanceScore <= 2 ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-700'}`}>
+                                  <span className="text-[10px] font-bold uppercase mb-1 opacity-70">Chuyên cần</span>
+                                  <span className="text-lg font-black">{empProfile.attendanceScore}<span className="text-xs opacity-50">/5</span></span>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* NẾU LÀ QUẢN LÝ: GIAO DIỆN ĐẶC QUYỀN THỐNG KÊ 6 HẠNG MỤC */}
+                      {empProfile.canViewGembaStats && (
+                          <div className="bg-blue-900 rounded-2xl p-5 shadow-lg border border-blue-800 relative overflow-hidden mt-2">
+                              <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
+                                  <ShieldAlert size={120} className="text-white"/>
+                              </div>
+                              <h3 className="font-black text-white text-sm mb-4 uppercase flex items-center gap-2 relative z-10 tracking-wide">
+                                  <FileText size={16} className="text-yellow-400"/>
+                                  Báo cáo Hiện trường (Năm {empProfile.currentSelectedYear})
+                              </h3>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 relative z-10">
+                                  {[
+                                      { id: 'Pre-shift toolbox talk', label: 'Toolbox Talk', icon: '🗣️' },
+                                      { id: 'Leader Led Safety Gemba', label: 'Safety Gemba', icon: '🔍' },
+                                      { id: 'Leader Led Activities', label: 'Led Activities', icon: '👨‍✈️' },
+                                      { id: 'Critical Control Assessment ( CCA)', label: 'CCA', icon: '⚠️' },
+                                      { id: 'SQDC', label: 'SQDC', icon: '📊' },
+                                      { id: 'Other Gemba', label: 'Other Gemba', icon: '🌐' }
+                                  ].map(type => (
+                                      <div key={type.id} className="bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/10 flex flex-col items-center text-center hover:bg-white/20 transition-colors">
+                                          <span className="text-2xl mb-1">{type.icon}</span>
+                                          <span className="text-[9px] text-blue-200 font-bold uppercase tracking-wider h-6 flex items-center justify-center line-clamp-2">{type.label}</span>
+                                          <span className="text-2xl font-black text-red-400 mt-1">{empProfile.managerReportStats[type.id]}</span>
+                                      </div>
+                                  ))}
+                              </div>
+                              <div className="mt-4 pt-3 border-t border-white/20 flex justify-between items-center relative z-10">
+                                  <span className="text-xs text-blue-200 font-bold uppercase tracking-wide">Tổng lượt ghi nhận</span>
+                                  <span className="font-black text-red-500 text-xl bg-white/10 px-4 py-1 rounded-lg border border-white/20 shadow-inner">
+                                      {empProfile.managerReportStats.Total}
+                                  </span>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Lịch sử Hoạt động (Dạng Timeline nhúng gọn) */}
+                      <div className="space-y-4">
+                          {/* Lịch sử Ghi nhận từ Quản lý */}
+                          {empProfile.empRecords && empProfile.empRecords.length > 0 && (
+                              <div className="bg-white p-3 rounded-xl border border-gray-200">
+                                  <h4 className="font-bold text-gray-700 text-xs uppercase mb-2 flex items-center gap-1 border-b pb-1">
+                                      <FileText size={14}/> Ghi nhận từ Quản lý ({empProfile.empRecords.length})
+                                  </h4>
+                                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                                      {empProfile.empRecords.map(rec => (
+                                          <div key={rec.id} className="text-sm bg-gray-50 p-2 rounded border border-gray-100">
+                                              <div className="flex justify-between items-center mb-1">
+                                                  <div className="flex items-center gap-1">
+                                                      <RatingStars rating={rec.rating} readOnly size={12}/>
+                                                  </div>
+                                                  <span className="text-[10px] text-gray-400">{rec.date}</span>
+                                              </div>
+                                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{rec.content}</p>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
+                          {/* Lịch sử Kiểm tra thiết bị (Checklist) */}
+                          {empProfile.empChecklists && empProfile.empChecklists.length > 0 && (
+                              <div className="bg-white p-3 rounded-xl border border-gray-200">
+                                  <h4 className="font-bold text-gray-700 text-xs uppercase mb-2 flex items-center gap-1 border-b pb-1">
+                                      <ClipboardCheck size={14}/> Checklist thiết bị ({empProfile.empChecklists.length})
+                                  </h4>
+                                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                                      {empProfile.empChecklists.map(log => (
+                                          <div key={log.id} className="text-sm bg-gray-50 p-2 rounded border border-gray-100 flex flex-col transition-all hover:border-indigo-200 shadow-sm">
+                                              <div 
+                                                  className="flex justify-between items-center cursor-pointer select-none"
+                                                  onClick={() => setExpandedDeepViewLogs(prev => ({...prev, [log.id]: !prev[log.id]}))}
+                                              >
+                                                  <div>
+                                                      <span 
+                                                          className="font-bold text-indigo-600 hover:underline cursor-pointer"
+                                                          onClick={(e) => { e.stopPropagation(); setDetailedEmployeeId(null); setSelectedEquipmentId(log.equipmentId); }} // Nhảy thẳng sang Xem thiết bị
+                                                      >
+                                                          {log.equipmentId}
+                                                      </span>
+                                                      <span className="text-xs text-gray-500 ml-2">{log.date} (Ca {log.shift})</span>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                      {renderIssueSeverity(log)}
+                                                      <ChevronDown size={14} className={`text-gray-400 transition-transform ${expandedDeepViewLogs[log.id] ? 'rotate-180' : ''}`} />
+                                                  </div>
+                                              </div>
+                                              
+                                              {/* CHI TIẾT CHECKLIST MỞ RỘNG (SMART VIEW) */}
+                                              {expandedDeepViewLogs[log.id] && (
+                                                  <div className="mt-2 pt-2 border-t border-gray-200 animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+                                                      <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Chi tiết kiểm tra:</span>
+                                                      <ChecklistLogDetails log={log} />
+                                                  </div>
+                                              )}
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
+                          {/* Lịch sử Báo cáo An toàn / Kaizen */}
+                          {(empProfile.empSafety?.length > 0 || empProfile.empIdeas?.length > 0) && (
+                              <div className="bg-white p-3 rounded-xl border border-gray-200">
+                                  <h4 className="font-bold text-gray-700 text-xs uppercase mb-2 flex items-center gap-1 border-b pb-1">
+                                      <Activity size={14}/> Sáng kiến & Báo cáo an toàn
+                                  </h4>
+                                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                                      {empProfile.empSafety?.map(r => (
+                                          <div key={r.id} className="text-sm bg-red-50 p-2 rounded border border-red-100 flex flex-col gap-1 relative">
+                                              <span className="text-xs font-bold text-red-700 uppercase">⚠️ Báo cáo An toàn ({r.date})</span>
+                                              <p className="text-xs text-gray-700 line-clamp-2">{r.content}</p>
+                                              
+                                              {/* CẬP NHẬT: THÊM DEEP LINK TỪ HỒ SƠ ĐẾN LỊCH SỬ THIẾT BỊ */}
+                                              {r.isFromChecklist && r.equipmentId && (
+                                                  <button 
+                                                      onClick={(e) => { e.stopPropagation(); setDetailedEmployeeId(null); setSelectedEquipmentId(r.equipmentId); }}
+                                                      className="mt-1 text-[10px] bg-white border border-red-200 text-red-600 px-2 py-1 rounded w-fit hover:bg-red-100 font-bold flex items-center gap-1 transition shadow-sm"
+                                                  >
+                                                      🔗 Đối chiếu Checklist {r.equipmentId}
+                                                  </button>
+                                              )}
+                                          </div>
+                                      ))}
+                                      {empProfile.empIdeas?.map(i => (
+                                          <div key={i.id} className="text-sm bg-purple-50 p-2 rounded border border-purple-100 flex flex-col gap-1">
+                                              <span className="text-xs font-bold text-purple-700 uppercase">💡 Sáng kiến ({i.date})</span>
+                                              <p className="text-xs text-gray-700 line-clamp-2">{i.content}</p>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+              );
+          })()}
+      </Modal>
+
+      {/* --- NEW: APPROVAL PROCESS MODAL --- */}
+      <Modal 
+        isOpen={!!processItem} 
+        onClose={() => setProcessItem(null)} 
+        title={isEditingDecision 
+            ? `CHỈNH SỬA QUYẾT ĐỊNH: ${processType === 'safety' ? 'Báo cáo An toàn' : 'Sáng kiến'}` 
+            : `Xử lý: ${processAction === 'Approved' ? 'DUYỆT' : 'TỪ CHỐI'} ${processType === 'safety' ? 'Báo cáo An toàn' : 'Sáng kiến'}`
+        }
+      >
+         <div className="space-y-4">
+            {/* 1. Review Content */}
+            <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 text-sm">
+                <span className="block text-xs font-bold text-gray-500 uppercase mb-1">Nội dung gốc:</span>
+                <p className="text-gray-800 font-medium italic">"{processItem?.content}"</p>
+                <div className="mt-2 text-xs text-gray-400 flex justify-between">
+                    <span>Tác giả: {employees.find(e => e.id === processItem?.employeeId)?.name}</span>
+                    <span>Ngày: {processItem?.date}</span>
+                </div>
+            </div>
+
+            {/* NEW: Status Switcher for Edit Mode */}
+            {isEditingDecision && (
+                <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                    <label className="block text-xs font-bold text-yellow-800 uppercase mb-2">Thay đổi trạng thái:</label>
+                    <div className="flex gap-2">
+                        <button 
+                            onClick={() => setProcessAction('Approved')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${processAction === 'Approved' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-500 border border-gray-200'}`}
+                        >
+                            <CheckCircle2 size={16} className="inline mr-1"/> Duyệt
+                        </button>
+                        <button 
+                            onClick={() => setProcessAction('Rejected')}
+                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${processAction === 'Rejected' ? 'bg-red-600 text-white shadow' : 'bg-white text-gray-500 border border-gray-200'}`}
+                        >
+                            <XCircle size={16} className="inline mr-1"/> Từ chối
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 2. Manager Feedback */}
+            <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                    {isEditingDecision ? 'Cập nhật phản hồi' : 'Phản hồi cho nhân viên'} <span className="text-red-500">*</span>
+                </label>
+                <textarea 
+                    className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-28 resize-none text-sm bg-gray-50 focus:bg-white transition"
+                    placeholder={processAction === 'Rejected' 
+                        ? "Gợi ý: Lý do từ chối (Tại sao chưa hợp lý), Hướng dẫn cải thiện..." 
+                        : "Gợi ý: Ghi nhận đóng góp, Đánh giá tác động (Tại sao tốt), Hướng dẫn bước tiếp theo..."}
+                    value={processFeedback}
+                    onChange={(e) => setProcessFeedback(e.target.value)}
+                />
+            </div>
+
+            {/* 3. KPI Impact Selection (Ẩn khi đang Edit để tránh cộng điểm chồng chéo - Logic đơn giản hóa) */}
+            {!isEditingDecision && (
+                <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                        Tác động KPI (Tự động tạo bản ghi)
+                    </label>
+                    <div className="grid grid-cols-1 gap-2">
+                        <button 
+                            onClick={() => setProcessImpact('NONE')}
+                            className={`p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition ${processImpact === 'NONE' ? 'bg-gray-100 border-gray-400 ring-1 ring-gray-400' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            <div className={`w-4 h-4 rounded-full border ${processImpact === 'NONE' ? 'bg-gray-500 border-gray-500' : 'border-gray-300'}`}></div>
+                            <span>Chỉ xử lý tin (Không tính điểm)</span>
+                        </button>
+
+                        {processAction === 'Approved' && (
+                            <button 
+                                onClick={() => setProcessImpact('POSITIVE')}
+                                className={`p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition ${processImpact === 'POSITIVE' ? 'bg-green-50 border-green-500 ring-1 ring-green-500' : 'bg-white border-gray-200 hover:bg-green-50'}`}
+                            >
+                                <div className={`w-4 h-4 rounded-full border ${processImpact === 'POSITIVE' ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}></div>
+                                <div>
+                                    <span className="font-bold text-green-700">Ghi nhận TÍCH CỰC (+Điểm)</span>
+                                    <span className="block text-xs text-gray-500">Tự động tạo bản ghi 4 sao (Chất lượng/An toàn)</span>
+                                </div>
+                            </button>
+                        )}
+
+                        {processAction === 'Rejected' && (
+                            <button 
+                                onClick={() => setProcessImpact('NEGATIVE')}
+                                className={`p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition ${processImpact === 'NEGATIVE' ? 'bg-red-50 border-red-500 ring-1 ring-red-500' : 'bg-white border-gray-200 hover:bg-red-50'}`}
+                            >
+                                <div className={`w-4 h-4 rounded-full border ${processImpact === 'NEGATIVE' ? 'bg-red-500 border-red-500' : 'border-gray-300'}`}></div>
+                                <div>
+                                    <span className="font-bold text-red-700">Ghi nhận TIÊU CỰC (-Điểm)</span>
+                                    <span className="block text-xs text-gray-500">Tự động tạo bản ghi 2 sao (Cảnh cáo)</span>
+                                </div>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 4. Actions */}
+            <div className="flex gap-3 pt-2">
+                <button 
+                    onClick={() => setProcessItem(null)} 
+                    className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                >
+                    Hủy bỏ
+                </button>
+                <button 
+                    onClick={confirmProcessRequest} 
+                    disabled={isProcessing}
+                    className={`flex-1 py-3 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 transition ${
+                        isEditingDecision 
+                            ? 'bg-blue-600 hover:bg-blue-700' 
+                            : (processAction === 'Approved' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')
+                    }`}
+                >
+                    {isProcessing ? <Loader2 className="animate-spin" size={18}/> : (isEditingDecision ? <Save size={18}/> : (processAction === 'Approved' ? <CheckCircle2 size={18}/> : <XCircle size={18}/>))}
+                    {isEditingDecision ? 'Lưu thay đổi' : (processAction === 'Approved' ? 'Xác nhận DUYỆT' : 'Xác nhận TỪ CHỐI')}
+                </button>
+            </div>
+         </div>
+      </Modal>
+
+      {/* --- NEW: SECURITY MODAL FOR EDIT DECISION --- */}
+      <SecurityModal 
+          isOpen={showEditSecurity} 
+          onClose={() => { setShowEditSecurity(false); setEditAuthItem(null); }} 
+          onConfirm={handleEditAuthSuccess}
+          title="Xác thực Quản lý"
+          warningMessage="Hành động chỉnh sửa quyết định sẽ được lưu vết vào hệ thống Audit Log. Vui lòng xác nhận mật khẩu để tiếp tục."
+          currentUser={currentUser}
+      />
+
+      {/* --- NEW MODAL: EMPLOYEE TRANSITION --- */}
+      <Modal isOpen={showTransitionModal} onClose={() => setShowTransitionModal(false)} title="Chuyển đổi Trạng thái Nhân sự">
+          {transitionEmp && (
+              <div className="space-y-4">
+                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl flex items-center gap-3">
+                      <Avatar src={transitionEmp.avatar} alt={transitionEmp.name} size="md"/>
+                      <div>
+                          <p className="font-bold text-indigo-900">{transitionEmp.name}</p>
+                          <p className="text-xs text-indigo-700 font-mono">Hiện tại: {transitionEmp.code} • {transitionEmp.group} ({transitionEmp.position})</p>
+                      </div>
+                  </div>
+
+                  <div className="space-y-3">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mã NV Mới (Nếu chuyển khối)</label>
+                          <input 
+                              type="text" 
+                              className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 uppercase font-mono text-sm"
+                              placeholder="VD: CMP0123 (Chỉ điền nếu đổi từ ADHOC lên chính thức)"
+                              value={transitionForm.newCode}
+                              onChange={(e) => setTransitionForm({...transitionForm, newCode: e.target.value.toUpperCase()})}
+                          />
+                          <p className="text-[10px] text-gray-400 mt-1 italic">* Hệ thống sẽ tự động ghép nối (migration) dữ liệu cũ sang mã mới.</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bộ phận mới <span className="text-red-500">*</span></label>
+                              <select 
+                                  className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold text-gray-700"
+                                  value={transitionForm.newGroup}
+                                  onChange={(e) => setTransitionForm({...transitionForm, newGroup: e.target.value})}
+                              >
+                                  <option value="">-- Chọn bộ phận --</option>
+                                  {GROUP_ORDER.map(g => <option key={g} value={g}>{g}</option>)}
+                                  <option value="Khác">Khác</option>
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Chức vụ mới <span className="text-red-500">*</span></label>
+                              <input 
+                                  type="text" 
+                                  className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                  placeholder="Vị trí đảm nhận..."
+                                  value={transitionForm.newPosition}
+                                  onChange={(e) => setTransitionForm({...transitionForm, newPosition: e.target.value})}
+                              />
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Lý do / Ghi chú Quyết định</label>
+                          <textarea 
+                              className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm h-20 resize-none"
+                              placeholder="VD: Ký hợp đồng chính thức, hoặc Thăng chức theo QĐ số..."
+                              value={transitionForm.reason}
+                              onChange={(e) => setTransitionForm({...transitionForm, reason: e.target.value})}
+                          />
+                      </div>
+
+                      {/* THÊM KHUNG NHẬP MẬT KHẨU QUẢN LÝ */}
+                      <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200 mt-2">
+                          <label className="block text-xs font-bold text-indigo-800 uppercase mb-1">
+                              Xác thực Quản lý
+                          </label>
+                          <input 
+                              type="password" 
+                              className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+                              placeholder="Nhập mật khẩu của bạn để xác nhận..."
+                              value={transitionAdminPass}
+                              onChange={(e) => setTransitionAdminPass(e.target.value)}
+                          />
+                      </div>
+                  </div>
+
+                  <div className="flex gap-3 justify-end pt-3 border-t">
+                      <button onClick={() => setShowTransitionModal(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200 transition">Huỷ</button>
+                      <button 
+                          onClick={handleEmployeeTransition}
+                          disabled={isProcessing || !transitionForm.newGroup || !transitionForm.newPosition || !transitionAdminPass}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold shadow hover:bg-indigo-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                          {isProcessing ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>}
+                          Lưu Trạng thái
+                      </button>
+                  </div>
+              </div>
+          )}
+      </Modal>
+
+      {/* MODAL PROMOTE TO NEWS */}
+      <Modal isOpen={showPromoteModal} onClose={() => setShowPromoteModal(false)} title="Đưa lên Truyền thông Cảng">
+          <div className="space-y-4">
+              <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 border border-blue-100">
+                  <span className="font-bold">Gợi ý:</span> Bạn có thể chỉnh sửa lại tiêu đề và lời văn để phù hợp làm thông báo chung tuyên dương trên Bảng tin.
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Tiêu đề bản tin</label>
+                  <input 
+                      type="text" 
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-gray-800"
+                      value={promoteTitle}
+                      onChange={(e) => setPromoteTitle(e.target.value)}
+                  />
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Nội dung chi tiết</label>
+                  <textarea 
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-40 resize-none text-sm text-gray-700 leading-relaxed"
+                      value={promoteContent}
+                      onChange={(e) => setPromoteContent(e.target.value)}
+                  />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                  <button onClick={() => setShowPromoteModal(false)} className="px-4 py-2 bg-gray-100 rounded-lg font-bold text-gray-700 hover:bg-gray-200 transition">Hủy</button>
+                  {/* CẬP NHẬT: Thay đổi hàm gọi để Mở Security Modal trước khi thực hiện */}
+                  <button onClick={handlePromoteToNewsSubmit} disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center gap-2 shadow hover:bg-blue-700 transition">
+                      <Megaphone size={16}/> Đăng Bản tin
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+      {/* CÁC MODAL XÁC NHẬN CHỨC NĂNG CÓ CẢNH BÁO TRÁNH LỖI IFRAME */}
+      {/* THÊM MỚI: BẢO MẬT BẰNG PASSWORD CHO TAB KIỂM DUYỆT */}
+      <SecurityModal 
+          isOpen={showModSecurityModal} 
+          onClose={() => { setShowModSecurityModal(false); setPendingModAction(null); }} 
+          onConfirm={executeModAction}
+          title="Xác thực Quản lý"
+          warningMessage={
+              pendingModAction?.action === 'DELETE' ? "CẢNH BÁO: Hành động này sẽ XÓA VĨNH VIỄN nội dung này khỏi hệ thống. Vui lòng xác nhận mật khẩu để tiếp tục." :
+              pendingModAction?.action === 'TOGGLE_HIDE' ? "Xác nhận đổi trạng thái Ẩn/Hiện của bài viết này." :
+              "Xác nhận để đưa nội dung này lên Bảng tin Truyền thông chung."
+          }
+          currentUser={currentUser}
+      />
+
+      <Modal isOpen={!!deleteNewsId} onClose={() => setDeleteNewsId(null)} title="Xác nhận Xóa Bản tin">
+          <div className="text-center py-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 mb-4"><Trash2 size={32} /></div>
+              <h4 className="font-bold text-gray-800 text-lg mb-2">Xóa bản tin này?</h4>
+              <div className="flex gap-3 mt-6">
+                  <button onClick={() => setDeleteNewsId(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium">Hủy bỏ</button>
+                  <button onClick={confirmDeleteNews} disabled={isProcessing} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-medium shadow-lg flex items-center justify-center gap-2">
+                      {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <Trash2 size={18}/>} Xác nhận
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+      <Modal isOpen={showConfirmAnnounce} onClose={() => setShowConfirmAnnounce(false)} title="Công bố Kết quả">
+          <div className="text-center py-4">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-blue-600 mb-4"><Megaphone size={32} /></div>
+              <h4 className="font-bold text-gray-800 text-lg mb-2">Chốt danh sách và Công bố?</h4>
+              <p className="text-gray-500 text-sm mb-6">Hệ thống sẽ tổng hợp phiếu bầu, tạo bản tin thông báo và tự động ghi nhận KPI 5 sao cho người chiến thắng.</p>
+              <div className="flex gap-3">
+                  <button onClick={() => setShowConfirmAnnounce(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium">Hủy bỏ</button>
+                  <button onClick={executeAnnounceWinner} disabled={isProcessing} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium shadow-lg flex items-center justify-center gap-2">
+                      {isProcessing ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18}/>} Công bố ngay
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+      {/* BAN / UNBAN MODAL */}
+      <Modal
+          isOpen={showBanModal}
+          onClose={() => { setShowBanModal(false); setBanReason(''); setBanAdminPass(''); setBanTargetEmp(null); }}
+          title={banTargetEmp?.isBanned ? '🔓 Mở khóa tài khoản' : '🚫 Khóa tài khoản Nhân viên'}
+      >
+          {banTargetEmp && (
+              <div className="space-y-4 py-2">
+                  {/* Info nhân viên */}
+                  <div className={`flex items-center gap-3 p-3 rounded-xl border ${banTargetEmp.isBanned ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-black border-2 ${banTargetEmp.isBanned ? 'bg-green-100 border-green-300 text-green-700' : 'bg-red-100 border-red-300 text-red-700'}`}>
+                          {banTargetEmp.name.charAt(0)}
+                      </div>
+                      <div>
+                          <p className="font-black text-gray-800 text-sm">{banTargetEmp.name}</p>
+                          <p className="text-xs text-gray-500">{banTargetEmp.code} • {banTargetEmp.group}</p>
+                      </div>
+                      {banTargetEmp.isBanned && <span className="ml-auto text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-bold">Đang bị khóa</span>}
+                  </div>
+
+                  {banTargetEmp.isBanned ? (
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                          <p className="text-sm font-bold text-green-800 mb-1">Lý do đang bị khóa:</p>
+                          <p className="text-sm text-green-700 italic">"{banTargetEmp.banReason}"</p>
+                          <p className="text-xs text-green-500 mt-2">Xác nhận mật khẩu để mở khóa tài khoản này.</p>
+                      </div>
+                  ) : (
+                      <div>
+                          <label className="block text-xs font-bold text-red-700 uppercase mb-1.5">Lý do khóa tài khoản <span className="text-red-500">*</span></label>
+                          <textarea
+                              className="w-full p-3 border-2 border-red-200 rounded-xl outline-none focus:ring-2 focus:ring-red-400 h-20 resize-none text-sm font-medium"
+                              placeholder="VD: Vi phạm quy định an toàn nghiêm trọng, đang điều tra kỷ luật..."
+                              value={banReason}
+                              onChange={e => setBanReason(e.target.value)}
+                          />
+                          <p className="text-xs text-red-400 mt-1">Lý do sẽ hiển thị cho người quét mã QR của nhân viên này.</p>
+                      </div>
+                  )}
+
+                  <div>
+                      <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Mật khẩu của bạn <span className="text-red-500">*</span></label>
+                      <input
+                          type="password"
+                          className="w-full p-3 border-2 rounded-xl outline-none focus:ring-2 focus:ring-gray-400 font-bold tracking-widest"
+                          placeholder="Nhập mật khẩu để xác nhận..."
+                          value={banAdminPass}
+                          onChange={e => setBanAdminPass(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleBanEmployee()}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Nhập mật khẩu đăng nhập của bạn ({currentUser.name}) để xác nhận.</p>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                      <button
+                          onClick={() => { setShowBanModal(false); setBanReason(''); setBanAdminPass(''); setBanTargetEmp(null); }}
+                          className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                      >
+                          Hủy bỏ
+                      </button>
+                      <button
+                          onClick={handleBanEmployee}
+                          disabled={banProcessing}
+                          className={`flex-1 py-3 text-white rounded-xl font-black shadow-lg transition flex items-center justify-center gap-2 ${banTargetEmp.isBanned ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                      >
+                          {banProcessing ? <Loader2 className="animate-spin" size={16}/> : (banTargetEmp.isBanned ? <CheckCircle2 size={16}/> : <XCircle size={16}/>)}
+                          {banProcessing ? 'Đang xử lý...' : (banTargetEmp.isBanned ? 'Xác nhận Mở khóa' : 'Xác nhận Khóa TK')}
+                      </button>
+                  </div>
+              </div>
+          )}
+      </Modal>
+
+    </div>
+  );
+};
+
+// ==========================================
+// 6. MAIN APP COMPONENT
+// ==========================================
+
+export default function App() {
+  const [view, setView] = useState('home');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // --- REAL-TIME DATA STATE ---
+  const [user, setUser] = useState(null);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  
+  const [employees, setEmployees] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [safetyReports, setSafetyReports] = useState([]);
+  const [ideas, setIdeas] = useState([]);
+  const [performanceLogs, setPerformanceLogs] = useState([]);
+  const [records, setRecords] = useState([]); 
+  const [checklists, setChecklists] = useState([]); 
+  const [news, setNews] = useState([]); 
+  const [starVotes, setStarVotes] = useState([]);
+  const [guestsList, setGuestsList] = useState([]); // NEW: danh sách khách để QR scan
+
+  // --- NEW: CALCULATED GLOBAL DATA CHO DASHBOARD ---
+  // Tính toán Top 3 Nhân viên của tháng hiện tại (Dựa trên records dương)
+  const topPerformers = useMemo(() => {
+      const currentMonthStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+      
+      const scores = {}; // { empId: score }
+      
+      // Lọc record của tháng này
+      records.forEach(r => {
+          if (r.isDeleted) return;
+          
+          // Kiểm tra xem record có thuộc tháng này không (dựa theo checkDateMatch)
+          // Tái sử dụng logic parse ngày (DD/MM/YYYY hoặc YYYY-MM-DD)
+          let match = false;
+          if (r.date) {
+              const parts = r.date.split(r.date.includes('/') ? '/' : '-');
+              if (parts.length === 3) {
+                  let y, m;
+                  if (parts[0].length === 4) { y = parts[0]; m = parts[1].padStart(2, '0'); }
+                  else { y = parts[parts.length - 1]; m = parts[1].padStart(2, '0'); if (y.length === 2) y = '20'+y; }
+                  match = (`${y}-${m}` === currentMonthStr);
+              }
+          }
+
+          if (match) {
+              if (!scores[r.targetId]) scores[r.targetId] = 0;
+              // Tính điểm: >3 sao là cộng, <3 sao là trừ
+              if (r.rating >= 4) scores[r.targetId] += (r.rating - 3); // 4 sao = +1, 5 sao = +2
+              if (r.rating <= 2) scores[r.targetId] -= (3 - r.rating); // 2 sao = -1, 1 sao = -2
+          }
+      });
+
+      // Map lại thông tin nhân viên và sắp xếp
+      const results = Object.keys(scores)
+          .map(id => {
+              const emp = employees.find(e => e.id === id);
+              return emp ? { ...emp, score: scores[id] } : null;
+          })
+          .filter(e => e !== null && e.score > 0) // Chỉ lấy người có điểm dương
+          .sort((a, b) => b.score - a.score) // Sắp xếp giảm dần
+          .slice(0, 3); // Lấy Top 3
+
+      return results;
+  }, [records, employees]);
+
+  // Tính toán Tình trạng thiết bị mới nhất
+  const equipmentHealth = useMemo(() => {
+      const uniqueLogs = {};
+      checklists.forEach(log => {
+          if (!uniqueLogs[log.equipmentId] || (log.timestamp || 0) > (uniqueLogs[log.equipmentId].timestamp || 0)) {
+              uniqueLogs[log.equipmentId] = log;
+          }
+      });
+
+      const stats = { total: 0, ok: 0, warning: 0, critical: 0 };
+      const latestLogsArray = Object.values(uniqueLogs);
+      
+      latestLogsArray.forEach(log => {
+          stats.total++;
+          if (log.status === 'CRITICAL') {
+              stats.critical++;
+          } else {
+              let hasWarning = false;
+              if (log.data) {
+                  hasWarning = Object.values(log.data).some(i => i.status === 'WARNING' || i.status === 'CRITICAL');
+              }
+              if (hasWarning) stats.warning++;
+              else stats.ok++;
+          }
+      });
+
+      return stats;
+  }, [checklists]);
+
+  // Auth State (UI)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  
+  // Admin Auth
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminUser, setAdminUser] = useState('');
+  const [adminPass, setAdminPass] = useState('');
+  const [secretClickCount, setSecretClickCount] = useState(0);
+  const [showAdminDropdown, setShowAdminDropdown] = useState(false);
+
+  // Employee Auth Modals
+  const [loginCandidate, setLoginCandidate] = useState(null); 
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showSetPassModal, setShowSetPassModal] = useState(false);
+  const [empPassword, setEmpPassword] = useState('');
+  const [empConfirmPass, setEmpConfirmPass] = useState('');
+  
+  // NEW: Trạng thái lưu trữ nhân viên cần xem Hồ sơ ngay sau khi Admin Login từ luồng QR Code
+  const [pendingDeepViewId, setPendingDeepViewId] = useState(null);
+  const [pendingGuestViewId, setPendingGuestViewId] = useState(null); // NEW: Deep View Khách từ QR scan
+
+  // NEW: SUPPORT MODAL STATE
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  
+  // NEW: DOCUMENTATION CENTER STATE
+  const [showDocCenter, setShowDocCenter] = useState(false);
+
+  // --- NEW: QR & GUEST STATE ---
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scannedEmployee, setScannedEmployee] = useState(null);
+  const [scannedGuest, setScannedGuest] = useState(null);
+  const [showGuestRegister, setShowGuestRegister] = useState(false);
+  const [showGuestLogin, setShowGuestLogin] = useState(false);
+  const [showGuestPortal, setShowGuestPortal] = useState(false);
+  const [currentGuest, setCurrentGuest] = useState(null);
+
+  // --- EFFECT: AUTHENTICATION ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (tokenError) {
+            console.warn("Lỗi token xác thực, thử ẩn danh:", tokenError);
+            await signInAnonymously(auth).catch(e => console.warn("Lỗi ẩn danh (Có thể do Firebase chặn):", e));
+          }
+        } else {
+          await signInAnonymously(auth).catch(e => console.warn("Lỗi ẩn danh (Có thể do Firebase chặn):", e));
+        }
+      } catch (e) {
+        console.error("Auth init error:", e);
+      } finally {
+        // Đảm bảo luôn tắt màn hình loading ngay cả khi Auth thất bại
+        setTimeout(() => setIsLoadingData(false), 1000);
+      }
+    };
+    initAuth();
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsubscribe();
+  }, []);
+
+  // --- EFFECT 1: FETCH EMPLOYEES (LIGHTWEIGHT - NEEDED FOR LOGIN) ---
+  // Tách riêng việc lấy danh sách nhân viên để màn hình Login hoạt động nhanh
+  useEffect(() => {
+    if (!user) {
+        setIsLoadingData(false); // Quan trọng: Tắt loading để hiện UI Fallback khi chưa có quyền
+        return;
+    }
+    
+    // Bỏ kiểm tra `if (!user) return;` để thử lấy danh sách ngay từ đầu (nếu rule Firestore cho phép)
+    const q = query(getCollection('employees'));
+    const unsubEmployees = onSnapshot(q, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        setEmployees(sortEmployees(list));
+        setIsLoadingData(false);
+    }, (error) => {
+        console.warn("Không thể tải danh sách NV (Cần đăng nhập hoặc cấp quyền Firestore):", error);
+        setIsLoadingData(false); 
+    });
+
+    // Tải danh sách Khách để QR scanner có thể nhận diện ngay từ màn hình login
+    const unsubGuests = onSnapshot(query(getCollection('guests')), (snap) => {
+        setGuestsList(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, (err) => console.warn("Không thể tải danh sách khách:", err));
+
+    return () => { unsubEmployees(); unsubGuests(); };
+  }, [user]); 
+
+  // --- EFFECT 2: HEAVY DATA FETCHING (OPTIMIZED TRAFFIC) ---
+  // Chỉ tải dữ liệu nặng KHI VÀ CHỈ KHI đã xác định được currentUser và View
+  useEffect(() => {
+    if (!user || !currentUser) {
+        // Nếu chưa đăng nhập, clear dữ liệu để tiết kiệm bộ nhớ
+        setAttendance([]);
+        setSafetyReports([]);
+        setIdeas([]);
+        setRecords([]);
+        setChecklists([]); // Clear checklist logs
+        return;
+    }
+
+    const unsubs = []; // Array to hold unsubscribe functions
+
+    // HÀM HỖ TRỢ QUERY THÔNG MINH
+    // Nếu là Admin: Tải nhiều (có giới hạn). Nếu là NV: Chỉ tải của mình.
+    const createSmartQuery = (colName, userField) => {
+        const colRef = getCollection(colName);
+        
+        if (view === 'admin') {
+            // ADMIN: Tải tất cả nhưng giới hạn 1000 records mới nhất
+            return query(colRef, limit(1000)); 
+        } else {
+            // EMPLOYEE: Chỉ tải dữ liệu CỦA CHÍNH MÌNH (Tiết kiệm 99% traffic)
+            return query(colRef, where(userField, '==', currentUser.id));
+        }
+    };
+
+    // 1. Attendance
+    const qAttendance = createSmartQuery('attendance', 'employeeId');
+    unsubs.push(onSnapshot(qAttendance, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setAttendance(list);
+    }));
+
+    // 2. Safety Reports
+    const qSafety = createSmartQuery('safety_reports', 'employeeId');
+    unsubs.push(onSnapshot(qSafety, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setSafetyReports(list);
+    }));
+
+    // 3. Ideas
+    const qIdeas = createSmartQuery('ideas', 'employeeId');
+    unsubs.push(onSnapshot(qIdeas, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setIdeas(list);
+    }));
+
+    // 4. Employee Records (Ghi nhận)
+    const qRecords = createSmartQuery('employee_records', 'targetId');
+    unsubs.push(onSnapshot(qRecords, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setRecords(list);
+    }));
+
+    // 5. Checklist Logs (CẬP NHẬT THEO YÊU CẦU: checklists)
+    // Admin: lấy 1000 logs mới nhất. Employee: lấy logs có reporterId == currentUser.id
+    const qChecklists = createSmartQuery('checklist_logs', 'reporterId');
+    unsubs.push(onSnapshot(qChecklists, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); // Sắp xếp mới nhất lên đầu
+        setChecklists(list);
+    }));
+
+    // 6. News Posts (GLOBAL - Mọi người đều đọc được giống nhau)
+    const qNews = query(getCollection('news_posts'), limit(100)); // Lấy 100 tin mới nhất cho tất cả
+    unsubs.push(onSnapshot(qNews, (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setNews(list);
+    }));
+
+    // 7. Star Votes (GLOBAL - Cho quản lý biết tình trạng bầu chọn)
+    if (['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(currentUser.group) || currentUser.id === 'SUPER_ADMIN') {
+        const qStarVotes = query(getCollection('star_votes'));
+        unsubs.push(onSnapshot(qStarVotes, (snapshot) => {
+            setStarVotes(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+        }));
+    }
+
+    // 8. Guests list (GLOBAL - Để QR scanner nhận diện mã Khách)
+    unsubs.push(onSnapshot(query(getCollection('guests')), (snap) => {
+        setGuestsList(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }));
+
+    // Cleanup function: Hủy đăng ký khi logout hoặc đổi view
+    return () => {
+        unsubs.forEach(unsub => unsub());
+    };
+  }, [user, currentUser, view]); // Re-run khi currentUser hoặc view thay đổi
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 6000);
+  };
+
+  const handleSelectEmployee = (user) => {
+    setLoginCandidate(user);
+    setShowDropdown(false);
+    if (user.isFirstLogin !== false) {
+      setShowSetPassModal(true);
+      setEmpPassword('');
+      setEmpConfirmPass('');
+    } else {
+      setShowLoginModal(true);
+      setEmpPassword('');
+    }
+  };
+
+  const handleEmployeeLogin = async () => {
+    if (!loginCandidate) return;
+    
+    // KIỂM TRA BAN
+    if (loginCandidate.isBanned) {
+        showToast(`Tài khoản bị khóa: ${loginCandidate.banReason || 'Liên hệ Quản lý để biết thêm.'}`, 'error');
+        return;
+    }
+    
+    // CẬP NHẬT: Kiểm tra mật khẩu trống trước khi gọi Firebase để tránh lỗi console
+    if (!empPassword) {
+        showToast("Vui lòng nhập mật khẩu!", "warning");
+        return;
+    }
+    
+    // Tạo email ảo từ Mã NV nếu chưa có email thực
+    const email = loginCandidate.email || `${loginCandidate.code.toLowerCase().trim()}@hero.local`;
+
+    try {
+        // Thực hiện đăng nhập qua Firebase Auth
+        await signInWithEmailAndPassword(auth, email, empPassword);
+        
+        // CẬP NHẬT: LẤY THÔNG TIN THỰC TẾ NẾU ĐĂNG NHẬP BẰNG FALLBACK (Manual Input)
+        let realUser = loginCandidate;
+        if (loginCandidate.group === 'Khác' && loginCandidate.name === loginCandidate.code) {
+            try {
+                const q = query(getCollection('employees'), where('code', '==', loginCandidate.code));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    realUser = { ...querySnapshot.docs[0].data(), id: querySnapshot.docs[0].id };
+                }
+            } catch (e) {
+                console.warn("Không thể lấy thông tin thực tế:", e);
+            }
+        }
+        
+        // Nếu thành công, cập nhật UI state
+        setCurrentUser({ ...realUser, password: empPassword });
+        
+        const isSupervisor = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(realUser.group);
+        if (isSupervisor) {
+            setView('admin'); 
+            showToast(`Xin chào Quản lý ${realUser.name}!`);
+        } else {
+            setView('employee');
+            showToast(`Xin chào ${realUser.name}!`);
+        }
+        
+        setShowLoginModal(false);
+        setLoginCandidate(null);
+    } catch (error) {
+        // CẬP NHẬT: Xử lý lỗi tinh tế hơn (không log đỏ console nếu chỉ là sai pass)
+        setEmpPassword(''); // Xóa mật khẩu cũ ngay lập tức
+        
+        // Kiểm tra mã lỗi từ Firebase
+        if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+            // Đây là lỗi người dùng nhập sai, chỉ cần báo Toast nhẹ nhàng
+            showToast("Mật khẩu không đúng. Vui lòng thử lại!", "error");
+        } else {
+            // Các lỗi khác (Mạng, Cấu hình...) mới cần log để dev sửa
+            console.error("Login System Error:", error);
+            showToast("Lỗi đăng nhập: " + (error.message || "Vui lòng thử lại"), "error");
+        }
+    }
+  };
+
+  const handleSetNewPassword = async () => {
+    if (!empPassword || empPassword.length < 4) return showToast("Mật khẩu phải từ 4 ký tự!", "error");
+    if (empPassword !== empConfirmPass) return showToast("Mật khẩu nhập lại không khớp!", "error");
+
+    // FIX: Đảm bảo lấy email mới nhất được gán từ Admin (nếu đã bị reset)
+    const latestEmpData = employees.find(e => e.id === loginCandidate.id) || loginCandidate;
+    let emailToUse = latestEmpData.email || `${latestEmpData.code.toLowerCase().trim()}@hero.local`;
+
+    try {
+        // 1. Tạo user trên Firebase Auth (Tự động đăng nhập sau khi tạo)
+        let authUser = null;
+        let retryCount = 0;
+        
+        while (!authUser && retryCount < 3) {
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, emailToUse, empPassword);
+                authUser = userCredential.user;
+            } catch (err) {
+                if (err.code === 'auth/email-already-in-use') {
+                    // Tự động tạo email hệ thống mới nếu Firebase báo trùng lặp
+                    emailToUse = `${latestEmpData.code.toLowerCase().trim()}_${Date.now()}@hero.local`;
+                    retryCount++;
+                } else {
+                    throw err; // Ném lỗi ra ngoài nếu không phải là lỗi trùng lặp
+                }
+            }
+        }
+
+        if (!authUser) throw new Error("Hệ thống không thể tạo tài khoản xác thực mới lúc này.");
+
+        // 2. Cập nhật trạng thái trong Firestore
+        await updateDoc(getDocRef('employees', latestEmpData.id), {
+            password: empPassword,
+            isFirstLogin: false,
+            email: emailToUse // Lưu lại email đã đăng ký thành công
+        });
+        
+        // 3. Cập nhật UI State
+        const updatedUser = { ...latestEmpData, password: empPassword, isFirstLogin: false, email: emailToUse };
+        setCurrentUser(updatedUser);
+        
+        const isSupervisor = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(updatedUser.group);
+        if (isSupervisor) {
+            setView('admin');
+            showToast(`Xin chào Quản lý ${updatedUser.name}!`);
+        } else {
+            setView('employee');
+            showToast("Thiết lập mật khẩu thành công!");
+        }
+
+        setShowSetPassModal(false);
+        setLoginCandidate(null);
+    } catch (e) {
+        console.error("Set Password Error:", e);
+        if (e.code === 'auth/weak-password') {
+            showToast("Mật khẩu quá yếu (cần ít nhất 6 ký tự).", "error");
+        } else {
+            showToast("Lỗi tạo tài khoản: " + e.message, "error");
+        }
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!loginCandidate) return;
+    
+    // FIX: Đảm bảo lấy bản ghi mới nhất từ danh sách employees theo real-time
+    const latestEmpData = employees.find(e => e.id === loginCandidate.id) || loginCandidate;
+    
+    // 1. LUÔN MỞ MODAL HỖ TRỢ TRƯỚC ĐỂ KHÔNG BỊ KHỰNG GIAO DIỆN (Bỏ qua lỗi DB nếu có)
+    setShowLoginModal(false);
+    setShowSupportModal(true); 
+    
+    // 2. CHẠY NGẦM GỬI YÊU CẦU LÊN HỆ THỐNG CHO QUẢN LÝ
+    try {
+        if (!latestEmpData.resetRequested && latestEmpData.id && latestEmpData.group !== 'Khác') {
+            await updateDoc(getDocRef('employees', latestEmpData.id), { resetRequested: true });
+        }
+    } catch (e) {
+        console.warn("Lỗi gửi yêu cầu reset ngầm (Có thể do quyền Firebase ẩn danh):", e);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+        await signOut(auth);
+    } catch (error) {
+        console.error("Logout Error:", error);
+    }
+    setCurrentUser(null);
+    setCurrentGuest(null);
+    setScannedEmployee(null);
+    setView('home');
+    setSearchTerm('');
+    setShowDropdown(false);
+    setAdminUser('');
+    setAdminPass('');
+    setSecretClickCount(0);
+  };
+
+  // --- SUPER ADMIN PROFILE DEFINITION ---
+  const SUPER_ADMIN_PROFILE = {
+    id: 'SUPER_ADMIN',
+    code: 'ADMIN_KEY',
+    name: 'System Administrator',
+    group: 'CMIT SM', // Giữ quyền cao nhất
+    position: 'Quản trị viên Hệ thống',
+    email: 'admin@cmit.hero.local',
+    phone: '0989.715.843', // Số hotline hỗ trợ
+    address: 'Server Room',
+    dob: '01/01/2024',
+    avatar: '', // Có thể thêm link ảnh logo nếu muốn
+    isFirstLogin: false,
+    resetRequested: false,
+    dept: 'IT & System',
+    route: 'ALL'
+  };
+
+  // Admin Auth Logic (CẬP NHẬT: Thêm tham số targetEmpId để hỗ trợ mở Deep View)
+  const handleAdminAuth = async (uOverride, pOverride, targetEmpId = null, targetGuestId = null) => {
+    const userToCheck = uOverride || adminUser;
+    const passToCheck = pOverride || adminPass;
+    
+    // CẬP NHẬT: Validate đầu vào
+    if (!userToCheck || !passToCheck) {
+        showToast("Vui lòng nhập đầy đủ thông tin!", "warning");
+        return;
+    }
+    
+    // Super Admin Backdoor Logic
+    if (userToCheck === 'phuong' && (passToCheck === 'tsv' || passToCheck === '15061990')) {
+        // FIX: Đảm bảo có phiên đăng nhập Firebase (ẩn danh) để vượt qua security rules của Firestore
+        // Vì lối tắt này không gọi signIn chuẩn, nên 'auth.currentUser' có thể là null sau khi logout NV
+        if (!auth.currentUser) {
+            try {
+                await signInAnonymously(auth);
+            } catch (e) {
+                console.error("Super Admin Auto-Auth Failed:", e);
+                showToast("Lỗi xác thực hệ thống!", "error");
+                return;
+            }
+        }
+
+        // 1. Set Current User
+        setCurrentUser(SUPER_ADMIN_PROFILE);
+        
+        // 2. Inject Admin into Employees List (Fix lỗi hiển thị Unknown cho các bản ghi do Admin tạo)
+        setEmployees(prev => {
+            if (prev.find(e => e.id === 'SUPER_ADMIN')) return prev;
+            return [SUPER_ADMIN_PROFILE, ...prev];
+        });
+
+        // Nếu có yêu cầu mở Deep View
+        if (targetEmpId) setPendingDeepViewId(targetEmpId);
+        if (targetGuestId) setPendingGuestViewId(targetGuestId);
+
+        // 3. UI Updates
+        setView('admin');
+        setShowAdminLogin(false);
+        setAdminUser('');
+        setAdminPass('');
+        showToast('🔓 Đã kích hoạt Chế độ Siêu Quản Trị!'); 
+        return;
+    }
+
+    // Tìm nhân viên trong danh sách local để lấy Code tạo email
+    const term = userToCheck.toLowerCase();
+    const candidate = employees.find(e => {
+        const isGroupAllowed = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(e.group);
+        if (!isGroupAllowed) return false;
+        
+        const matchesCode = e.code.toLowerCase() === term;
+        const matchesUsername = getLastNameUsername(e.name) === term;
+        // Hỗ trợ tìm tương đối nếu cần, nhưng tốt nhất là chính xác để login
+        return matchesCode || matchesUsername || e.name.toLowerCase().includes(term);
+    });
+
+    if (!candidate) {
+        showToast('Không tìm thấy tài khoản Quản trị phù hợp!', 'error');
+        return;
+    }
+
+    // Tạo email ảo từ Code của Supervisor tìm thấy
+    const email = candidate.email || `${candidate.code.toLowerCase().trim()}@hero.local`;
+
+    try {
+        await signInWithEmailAndPassword(auth, email, passToCheck);
+        
+        setCurrentUser({ ...candidate, password: passToCheck }); 
+        
+        // Nếu có yêu cầu mở Deep View sau khi đăng nhập
+        if (targetEmpId) setPendingDeepViewId(targetEmpId);
+        if (targetGuestId) setPendingGuestViewId(targetGuestId);
+
+        setView('admin'); 
+        setShowAdminLogin(false); 
+        showToast(`Chào mừng Supervisor ${candidate.name}!`); 
+    } catch (error) {
+        setAdminPass(''); // Xóa mật khẩu để nhập lại
+        
+        // CẬP NHẬT: Xử lý lỗi Admin tinh tế hơn
+        if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+             showToast('Mật khẩu không chính xác!', 'error');
+        } else {
+             console.error("Admin Login Error:", error);
+             showToast('Lỗi hệ thống: ' + error.message, 'error');
+        }
+    }
+  };
+
+  const handleAdminForgotPassword = async () => {
+    if (!adminUser) return showToast("Vui lòng nhập tên hoặc mã số để tìm tài khoản!", "error");
+    const term = adminUser.toLowerCase();
+    const candidates = employees.filter(e => {
+        const isGroupAllowed = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(e.group);
+        const matchesName = e.name.toLowerCase().includes(term);
+        const matchesCode = e.code.toLowerCase().includes(term);
+        return isGroupAllowed && (matchesName || matchesCode);
+    });
+
+    if (candidates.length === 0) return showToast("Không tìm thấy tài khoản Quản trị viên nào.", "error");
+    if (candidates.length > 1) return showToast(`Tìm thấy ${candidates.length} người trùng tên.`, "warning");
+
+    const target = candidates[0];
+    if (target.resetRequested) return showToast("Yêu cầu đã được gửi trước đó.", "warning");
+
+    try {
+        await updateDoc(getDocRef('employees', target.id), { resetRequested: true });
+        showToast(`Đã gửi yêu cầu Reset mật khẩu cho ${target.name}.`);
+    } catch (e) {
+        showToast("Lỗi gửi yêu cầu!", "error");
+    }
+  };
+
+  const filteredEmployees = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return employees.filter(emp => 
+      emp.name.toLowerCase().includes(term) ||
+      emp.code.toLowerCase().includes(term) ||
+      emp.group.toLowerCase().includes(term)
+    );
+  }, [employees, searchTerm]);
+
+  const adminSuggestions = useMemo(() => {
+    if (!adminUser) return [];
+    const term = adminUser.toLowerCase();
+    return employees.filter(emp => {
+      const isSupervisor = ['CMIT SM', 'CMIT TSV', 'CMIT Controller'].includes(emp.group);
+      if (!isSupervisor) return false;
+      return emp.name.toLowerCase().includes(term) || emp.code.toLowerCase().includes(term);
+    });
+  }, [employees, adminUser]);
+
+  const handleTitleClick = () => {
+    setSecretClickCount(prev => {
+        const newCount = prev + 1;
+        if (newCount === 10) showToast("Đã mở khóa tính năng ẩn! 🚀");
+        return newCount;
+    });
+  };
+
+  const Toast = () => (
+    toast ? (
+      <div className={`fixed bottom-5 right-5 px-6 py-3 rounded-xl shadow-2xl text-white font-medium animate-slideIn z-[200] flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-600' : 'bg-gray-900'}`}>
+        {toast.type === 'error' ? <AlertTriangle size={18}/> : <CheckCircle2 size={18}/>}
+        {toast.msg}
+      </div>
+    ) : null
+  );
+
+  // --- RENDER ---
+  if (isLoadingData && !user) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col gap-4">
+              <div className="animate-spin text-indigo-600"><Loader2 size={48} /></div>
+              <p className="text-gray-500 font-medium">Đang kết nối hệ thống...</p>
+          </div>
+      );
+  }
+
+  if (view === 'home') {
+    return (
+      <div 
+        className="min-h-screen flex items-center justify-center p-4 relative bg-cover bg-center"
+        style={{ backgroundImage: `url('https://www.cmit.com.vn/UploadFiles/TinyUpload/Images//press-release/IMG_6516.JPG')` }}
+      >
+        {/* Lớp phủ màu tối để làm nổi bật form đăng nhập */}
+        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-0"></div>
+        
+        {/* NÚT HƯỚNG DẪN NỔI BẬT - TRÊN CÙNG MÀN HÌNH */}
+        <div className="absolute top-4 left-0 right-0 flex justify-center z-20 px-4">
+          <button
+            onClick={() => setShowDocCenter(true)}
+            className="flex items-center gap-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-white font-black px-5 py-2.5 rounded-full shadow-2xl shadow-orange-900/60 transition-all active:scale-95 border-2 border-white/30 animate-pulse hover:animate-none"
+          >
+            <BookOpen size={18} className="shrink-0"/>
+            <span className="text-sm tracking-wide uppercase">📖 Hướng dẫn sử dụng</span>
+            <HelpCircle size={16} className="shrink-0 opacity-80"/>
+          </button>
+        </div>
+
+        {/* DOCUMENTATION CENTER */}
+        <DocumentationCenter isOpen={showDocCenter} onClose={() => setShowDocCenter(false)} />
+
+        <Toast />
+        <div className="max-w-md w-full bg-[#f8fafc] rounded-[2rem] shadow-2xl relative z-10 animate-fadeIn overflow-hidden" onClick={() => {setShowDropdown(false); setShowAdminDropdown(false)}}>
+          {/* NỬA TRÊN: Gradient Deep Blue */}
+          <div className="bg-gradient-to-b from-[#1a3673] to-[#1e3a8a] px-6 py-10 text-center text-white">
+            <div className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center mx-auto mb-6 backdrop-blur-md shadow-inner">
+              <Activity size={32} />
+            </div>
+            <h1 className="text-5xl font-black tracking-widest mb-2 drop-shadow-lg">H.E.R.O</h1>
+            
+            {/* THÊM Ý NGHĨA TÊN GỌI (HR - Engagement - Report - Operation) */}
+            <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-1 text-[9px] sm:text-[10px] font-medium tracking-[0.15em] text-blue-200 mb-5 mt-2 drop-shadow-sm uppercase">
+                <span><b className="text-white text-xs">H</b>R</span>
+                <span className="opacity-40 text-[6px]">●</span>
+                <span><b className="text-white text-xs">E</b>ngagement</span>
+                <span className="opacity-40 text-[6px]">●</span>
+                <span><b className="text-white text-xs">R</b>eport</span>
+                <span className="opacity-40 text-[6px]">●</span>
+                <span><b className="text-white text-xs">O</b>peration</span>
+            </div>
+
+            {/* Dòng kẻ chia tách tinh tế */}
+            <div className="w-16 h-[2px] bg-gradient-to-r from-transparent via-blue-400/50 to-transparent mx-auto mb-4"></div>
+
+            <p className="text-blue-200 text-[10px] font-bold tracking-[0.15em] uppercase opacity-90">Cai Mep International Terminal</p>
+          </div>
+          
+          {/* NỬA DƯỚI: Form Nhập liệu Trắng */}
+          <div className="p-8 space-y-6" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <label className="block text-[11px] font-black text-[#1e3a8a] uppercase tracking-widest mb-3">Xác thực nhân viên</label>
+              <div className="relative group z-50">
+                <Search className="absolute left-4 top-4 text-blue-400 group-focus-within:text-[#1e3a8a] transition-colors" size={20} />
+                <input
+                    type="text"
+                    className="w-full p-4 pl-12 pr-10 border-2 border-white rounded-2xl shadow-sm focus:ring-4 focus:ring-blue-100 focus:border-blue-300 outline-none transition bg-white text-gray-800 font-bold"
+                    placeholder="Nhập tên hoặc Mã NV..."
+                    value={searchTerm}
+                    onChange={(e) => { setSearchTerm(e.target.value); setShowDropdown(true); }}
+                    onFocus={() => setShowDropdown(true)}
+                />
+                <div className="absolute right-4 top-4 text-gray-300 cursor-pointer hover:text-gray-500 transition-colors" onClick={() => setShowDropdown(!showDropdown)}>
+                    <ChevronDown className={`transition-transform ${showDropdown ? 'rotate-180' : ''}`} size={20} />
+                </div>
+
+                                {showDropdown && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 max-h-60 overflow-y-auto animate-fadeIn z-[100]">
+                        {employees.length === 0 ? (
+                            <div className="p-5 text-center text-gray-600 text-sm bg-gray-50 rounded-xl m-2 border border-gray-200">
+                                <p className="mb-3 font-medium">Danh sách trống hoặc chưa tải được.</p>
+                                <button 
+                                    onClick={() => {
+                                        if (!searchTerm.trim()) return showToast("Vui lòng nhập Mã NV vào ô tìm kiếm", "warning");
+                                        const code = searchTerm.trim().toUpperCase();
+                                        setLoginCandidate({ id: code, code: code, name: code, group: 'Khác', isFirstLogin: false });
+                                        setShowLoginModal(true);
+                                        setShowDropdown(false);
+                                    }}
+                                    className="w-full py-3 bg-[#1e3a8a] text-white rounded-xl font-bold shadow hover:bg-[#172554] transition"
+                                >
+                                    Tiếp tục đăng nhập với mã "{searchTerm.toUpperCase() || '...'}"
+                                </button>
+                            </div>
+                        ) : filteredEmployees.length > 0 ? (
+                            filteredEmployees.map(emp => (
+                                <div key={emp.id} onClick={() => handleSelectEmployee(emp)} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-0 transition flex justify-between items-center group/item">
+                                    <div>
+                                        <p className="font-bold text-gray-800 text-sm group-hover/item:text-[#1e3a8a]">{emp.name}</p>
+                                        <p className="text-xs text-gray-500">{emp.code} • {emp.position}</p>
+                                    </div>
+                                    <GroupBadge group={emp.group} code={emp.code} />
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-gray-400 text-sm">Không tìm thấy kết quả</div>
+                        )}
+                    </div>
+                )}
+              </div>
+              <p className="text-center text-[10px] text-gray-400 italic font-medium mt-3">Nhập chính xác Mã NV (VD: CMP0474) để đăng nhập nhanh</p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowQRScanner(true)}
+                className="py-3.5 bg-[#0f4c81] hover:bg-[#1a6fc4] text-white rounded-2xl font-black text-sm transition shadow-lg flex flex-col items-center gap-1.5 active:scale-95">
+                <QrCode size={20}/> <span className="text-xs">Quét QR</span>
+              </button>
+              <button onClick={() => setShowGuestPortal(true)}
+                className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm transition shadow-lg flex flex-col items-center gap-1.5 active:scale-95">
+                <HardHat size={20}/> <span className="text-xs">Khách / Nhà thầu</span>
+              </button>
+            </div>
+            <button onClick={() => setShowAdminLogin(true)}
+              className="w-full py-4 bg-[#1e293b] hover:bg-[#0f172a] text-white rounded-2xl font-black uppercase tracking-wider text-sm transition shadow-xl flex justify-center items-center gap-2">
+              Quản lý / Admin <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* MODAL 1: SET PASSWORD */}
+        <Modal isOpen={showSetPassModal} onClose={() => setShowSetPassModal(false)} title="Thiết lập Mật khẩu Mới">
+           <form onSubmit={(e) => { e.preventDefault(); handleSetNewPassword(); }} className="space-y-4 py-2">
+              <div className="text-center mb-4">
+                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-[#1e3a8a] mb-2">
+                    <Key size={24} />
+                 </div>
+                 <p className="text-sm text-gray-600">Xin chào <b>{loginCandidate?.name}</b>! <br/>Đây là lần đăng nhập đầu tiên. Vui lòng tạo mật khẩu cá nhân.</p>
+              </div>
+              {/* Thêm trường username ẩn để trình duyệt liên kết mật khẩu với tài khoản này */}
+              <input type="text" name="username" autoComplete="username" value={loginCandidate?.code || ''} className="hidden" readOnly />
+              
+              <input type="password" name="new-password" autoComplete="new-password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-[#1e3a8a] outline-none" placeholder="Mật khẩu mới" value={empPassword} onChange={e => setEmpPassword(e.target.value)} />
+              <input type="password" name="confirm-password" autoComplete="new-password" className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-[#1e3a8a] outline-none" placeholder="Nhập lại mật khẩu" value={empConfirmPass} onChange={e => setEmpConfirmPass(e.target.value)} />
+              <button type="submit" className="w-full py-3 bg-[#1e3a8a] text-white rounded-xl font-bold hover:bg-[#172554] shadow-lg mt-2 transition">Xác nhận & Đăng nhập</button>
+           </form>
+        </Modal>
+
+        {/* MODAL 2: ENTER PASSWORD */}
+        <Modal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} title="Đăng nhập">
+           <form onSubmit={(e) => { e.preventDefault(); handleEmployeeLogin(); }} className="space-y-4 py-2">
+              <div className="text-center mb-4">
+                 <h3 className="font-black text-[#1e3a8a] text-xl uppercase">{loginCandidate?.name}</h3>
+                 <p className="text-sm font-bold text-gray-500">{loginCandidate?.code}</p>
+              </div>
+              
+              {/* Thêm trường username ẩn để trình duyệt tự động điền mật khẩu */}
+              <input type="text" name="username" autoComplete="username" value={loginCandidate?.code || ''} className="hidden" readOnly />
+              
+              {/* Đã bỏ onKeyDown vì thẻ form sẽ tự động bắt sự kiện phím Enter */}
+              <input type="password" name="password" autoComplete="current-password" autoFocus className="w-full p-4 border-2 rounded-xl focus:border-[#1e3a8a] outline-none font-bold text-gray-800 text-center tracking-widest transition" placeholder="Nhập mật khẩu..." value={empPassword} onChange={e => setEmpPassword(e.target.value)} />
+              <button type="submit" className="w-full py-4 bg-[#1e3a8a] text-white rounded-xl font-bold uppercase tracking-wider hover:bg-[#172554] shadow-lg mt-2 transition">Đăng nhập</button>
+              <div className="text-center mt-2">
+                 <button type="button" onClick={handleForgotPassword} className="text-sm text-red-500 hover:text-red-700 hover:underline font-bold transition">Quên mật khẩu / Cần hỗ trợ?</button>
+              </div>
+           </form>
+        </Modal>
+
+        {/* NEW: EMERGENCY SUPPORT MODAL */}
+        <Modal isOpen={showSupportModal} onClose={() => setShowSupportModal(false)} title="🆘 HỖ TRỢ KHẨN CẤP">
+            <div className="text-center py-4 space-y-4">
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 animate-pulse shadow-sm border border-red-200">
+                    <Phone size={40} />
+                </div>
+                
+                <div>
+                    <h3 className="text-xl font-black text-gray-800 mb-2">YÊU CẦU ĐÃ ĐƯỢC GỬI!</h3>
+                    <p className="text-sm text-gray-600 px-4 leading-relaxed font-medium">
+                        Hệ thống đã thông báo đến Quản lý rằng bạn cần hỗ trợ về mật khẩu.<br/><br/>
+                        Để được cấp lại mật khẩu ngay lập tức, vui lòng gọi điện thoại cho:
+                    </p>
+                </div>
+
+                <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 mx-4 shadow-inner">
+                    <p className="text-sm font-bold text-red-600 uppercase mb-1">HOTLINE YARDSUP</p>
+                    <a href="tel:0989715843" className="text-4xl font-black text-red-700 hover:text-red-800 transition block tracking-wider py-2">
+                        0989.715.843
+                    </a>
+                    <p className="text-xs text-red-500 mt-1 font-medium">(Trực ban Khai thác 24/7)</p>
+                </div>
+
+                <button 
+                    onClick={() => { setShowSupportModal(false); setLoginCandidate(null); }}
+                    className="w-full max-w-xs mx-auto py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                >
+                    Đã hiểu, đóng lại
+                </button>
+            </div>
+        </Modal>
+
+        {/* QR SCANNER */}
+        <QRScannerModal
+          isOpen={showQRScanner}
+          onClose={() => setShowQRScanner(false)}
+          employees={employees}
+          guests={guestsList}
+          onScanSuccess={(result) => {
+            if (result.type === 'employee') {
+              setScannedEmployee(result.data);
+            } else if (result.type === 'guest') {
+              setScannedGuest(result.data);
+            }
+            setShowQRScanner(false);
+          }}
+          showToast={showToast}
+        />
+
+        {/* QR LOGIN FLOW */}
+        {scannedEmployee && (
+          <QRLoginFlow
+            scannedEmployee={scannedEmployee}
+            employees={employees}
+            onLogin={(loginData) => {
+              if (loginData.type === 'employee') {
+                  setCurrentUser({ ...loginData.employee, password: loginData.password });
+                  setScannedEmployee(null);
+                  setView('employee');
+              } else if (loginData.type === 'manager') {
+                  handleAdminAuth(loginData.adminUser, loginData.adminPass, loginData.targetEmployeeId);
+                  setScannedEmployee(null);
+              }
+            }}
+            onCancel={() => setScannedEmployee(null)}
+            showToast={showToast}
+          />
+        )}
+
+        {/* GUEST QR LOGIN FLOW */}
+        {scannedGuest && (
+          <GuestQRLoginFlow
+            scannedGuest={scannedGuest}
+            employees={employees}
+            onLoginSuccess={(guestData) => { setCurrentGuest(guestData); setView('guest'); setScannedGuest(null); }}
+            onManagerView={(loginData) => {
+              handleAdminAuth(loginData.adminUser, loginData.adminPass, null, loginData.targetGuestId);
+              setScannedGuest(null);
+            }}
+            onCancel={() => setScannedGuest(null)}
+            showToast={showToast}
+          />
+        )}
+
+        {/* GUEST PORTAL - Hợp nhất Đăng nhập / Đăng ký */}
+        <GuestPortal
+          isOpen={showGuestPortal}
+          onClose={() => setShowGuestPortal(false)}
+          showToast={showToast}
+          onLoginSuccess={(guestData) => { setCurrentGuest(guestData); setView('guest'); setShowGuestPortal(false); }}
+        />
+
+        {/* GUEST REGISTRATION */}
+        <GuestRegistrationForm
+          isOpen={showGuestRegister}
+          onClose={() => setShowGuestRegister(false)}
+          showToast={showToast}
+        />
+
+        {/* GUEST LOGIN */}
+        <GuestLoginModal
+          isOpen={showGuestLogin}
+          onClose={() => setShowGuestLogin(false)}
+          showToast={showToast}
+          onLoginSuccess={(guestData) => { setCurrentGuest(guestData); setView('guest'); }}
+        />
+
+        {/* ADMIN LOGIN MODAL */}
+        <Modal isOpen={showAdminLogin} onClose={() => {setShowAdminLogin(false); setSecretClickCount(0); setShowAdminDropdown(false);}} title="Đăng nhập Quản trị" onTitleClick={handleTitleClick}>
+           <form onSubmit={(e) => { e.preventDefault(); handleAdminAuth(); }} className="space-y-4 pt-2">
+              <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-sm text-blue-800 flex items-start gap-2">
+                 <ShieldAlert size={16} className="mt-0.5 shrink-0"/>
+                 <div>
+                   <p className="font-bold">Dành cho Admin & Supervisor:</p>
+                   <ul className="list-disc ml-4 text-xs mt-1">
+                     <li>Admin: User hệ thống</li>
+                     <li>Supervisor: User = Tên / Pass = Mật khẩu cá nhân</li>
+                   </ul>
+                 </div>
+              </div>
+              <div className="relative">
+                <label className="block text-xs font-bold text-[#1e3a8a] uppercase mb-1.5">Username (Tên / Mã NV)</label>
+                <div className="relative">
+                    <UserCheck className="absolute left-4 top-3.5 text-gray-400" size={18}/>
+                    <input type="text" name="username" autoComplete="username" className="w-full p-3.5 pl-11 border-2 rounded-xl focus:border-[#1e3a8a] outline-none font-bold text-gray-800 transition" value={adminUser} onChange={e => {setAdminUser(e.target.value); setShowAdminDropdown(true);}} onFocus={() => setShowAdminDropdown(true)} placeholder="Nhập tên hoặc mã..."/>
+                    {showAdminDropdown && adminUser && (
+                        <div className="absolute top-full left-0 w-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-40 overflow-y-auto z-50">
+                            {adminSuggestions.length > 0 ? (
+                                adminSuggestions.map(emp => (
+                                    <div key={emp.id} className="p-3 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-0 transition" onClick={() => { setAdminUser(emp.name); setShowAdminDropdown(false); }}>
+                                        <div className="font-bold text-[#1e3a8a]">{emp.name}</div>
+                                        <div className="text-xs text-gray-500">{emp.code} • {emp.group}</div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-3 text-xs text-gray-400 text-center italic">Không tìm thấy quản trị viên phù hợp</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#1e3a8a] uppercase mb-1.5">Password</label>
+                <input type="password" name="password" autoComplete="current-password" className="w-full p-3.5 border-2 rounded-xl focus:border-[#1e3a8a] outline-none font-bold text-gray-800 tracking-widest transition" value={adminPass} onChange={e => setAdminPass(e.target.value)} placeholder="••••••••"/>
+              </div>
+              <button type="submit" className="w-full py-4 bg-[#1e293b] text-white rounded-xl font-black uppercase tracking-wider hover:bg-[#0f172a] shadow-lg mt-2 transition">Đăng nhập</button>
+              <div className="text-center mt-1">
+                 <button type="button" onClick={handleAdminForgotPassword} className="text-sm text-gray-500 hover:text-[#1e3a8a] hover:underline transition font-medium">Quên mật khẩu?</button>
+              </div>
+              {secretClickCount >= 10 && (
+                <div className="mt-4 p-3 bg-gradient-to-r from-red-100 to-orange-100 text-red-800 rounded-xl text-center cursor-pointer font-bold animate-pulse border border-red-200 flex items-center justify-center gap-2 hover:bg-white transition shadow-sm" onClick={() => handleAdminAuth('phuong', '15061990')}>
+                    <Zap size={16} className="text-red-600"/>
+                    [ADMIN SUPER KEY] Đăng nhập nhanh
+                </div>
+              )}
+           </form>
+        </Modal>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Toast />
+      {view === 'guest' && currentGuest ? (
+        <GuestDashboard
+          currentGuest={currentGuest}
+          showToast={showToast}
+          handleLogout={handleLogout}
+        />
+      ) : view === 'employee' ? (
+        <EmployeeDashboard 
+          currentUser={currentUser}
+          employees={employees} // TRUYỀN DỮ LIỆU NV
+          attendance={attendance}
+          safetyReports={safetyReports}
+          ideas={ideas}
+          performanceLogs={performanceLogs}
+          records={records}
+          checklists={checklists} 
+          news={news} 
+          topPerformers={topPerformers} // TRUYỀN XUỐNG
+          showToast={showToast}
+          handleLogout={handleLogout}
+        />
+      ) : (
+        <AdminDashboard 
+          currentUser={currentUser} 
+          user={user}
+          employees={employees}
+          attendance={attendance}
+          safetyReports={safetyReports}
+          ideas={ideas}
+          performanceLogs={performanceLogs}
+          records={records}
+          checklists={checklists}
+          news={news} 
+          topPerformers={topPerformers}
+          equipmentHealth={equipmentHealth}
+          starVotes={starVotes}
+          showToast={showToast}
+          handleLogout={handleLogout}
+          initialDetailedEmployeeId={pendingDeepViewId}
+          clearPendingDeepView={() => setPendingDeepViewId(null)}
+          initialGuestViewId={pendingGuestViewId}
+          clearPendingGuestView={() => setPendingGuestViewId(null)}
+        />
+      )}
+    </>
+  );
+}
